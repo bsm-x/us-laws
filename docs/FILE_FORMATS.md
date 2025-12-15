@@ -164,12 +164,13 @@ Current features:
 - ✅ Browse 20,976 public laws
 - ✅ View US Code structure (54 titles)
 - ✅ Click to view individual titles
-- ✅ Search within titles
+- ✅ Semantic search across all titles
 - ✅ Display section text
+- ✅ AI-powered Q&A with GPT-4o and Claude
 
 To add:
 
-- [ ] Full-text search across all titles
+- [x] Full-text search across all titles
 - [x] Founding documents pages
 - [ ] Links between laws and code sections
 - [ ] Download/export sections as PDF

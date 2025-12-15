@@ -45,10 +45,10 @@ python scripts/processing/create_vector_db.py
 
 ### After (OpenAI):
 
-- Model: text-embedding-3-large
-- Dimensions: 3072 (8x more dimensions!)
-- Cost: ~$3-5 for entire US Code
-- Quality: Excellent (best available)
+- Model: text-embedding-3-small
+- Dimensions: 1536 (4x more dimensions!)
+- Cost: ~$0.60 for entire US Code
+- Quality: Excellent
 - Time: 15-30 minutes
 - Hardware: Uses OpenAI's servers
 
@@ -56,8 +56,8 @@ python scripts/processing/create_vector_db.py
 
 For ~60,000 sections, ~30M tokens total:
 
-- **text-embedding-3-large**: $0.13 per 1M tokens
-- **Total**: 30M × $0.00013 = **~$3.90**
+- **text-embedding-3-small**: $0.02 per 1M tokens
+- **Total**: 30M × $0.00002 = **~$0.60**
 
 This is a one-time cost. Searches are free after that.
 
@@ -66,7 +66,8 @@ This is a one-time cost. Searches are free after that.
 1. **Better accuracy** - Understands nuanced legal queries
 2. **Better recall** - Finds relevant sections you might miss with keywords
 3. **Legal understanding** - Pre-trained on diverse text including legal documents
-4. **Dimensionality** - 3072 dimensions capture more semantic nuances
+4. **Dimensionality** - 1536 dimensions capture semantic nuances
+5. **Cost effective** - text-embedding-3-small is 6x cheaper than large model
 
 ## Verify It's Working:
 

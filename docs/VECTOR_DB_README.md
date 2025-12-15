@@ -54,8 +54,8 @@ python -m app.main
 
 ### Embeddings
 
-- Uses ChromaDB's default embedding function (all-MiniLM-L6-v2)
-- Converts text into 384-dimensional vectors
+- Uses OpenAI's text-embedding-3-small model
+- Converts text into 1536-dimensional vectors
 - Captures semantic meaning, not just keywords
 
 ### What Gets Embedded
@@ -80,7 +80,7 @@ in original works of authorship fixed in any tangible medium...
 ### Search Process
 
 1. Query is converted to embedding vector
-2. ChromaDB finds nearest neighbors (cosine similarity)
+2. LanceDB finds nearest neighbors (L2 distance)
 3. Returns most semantically similar sections
 4. Results sorted by relevance score
 
@@ -131,12 +131,10 @@ in original works of authorship fixed in any tangible medium...
 ```
 data/
   vector_db/
-    chroma.sqlite3           # SQLite database
-    [uuid]/                  # Embedding data
-      data_level0.bin
-      header.bin
-      length.bin
-      link_lists.bin
+    uscode.lance/            # LanceDB table directory
+      _versions/             # Version history
+      _indices/              # Vector index files
+      *.lance                # Data fragments (columnar format)
 ```
 
 ## Performance
@@ -161,46 +159,47 @@ python scripts/processing/create_vector_db.py
 ### Custom Queries
 
 ```python
-import chromadb
-from pathlib import Path
+import lancedb
+import openai
 
-client = chromadb.PersistentClient(path="data/vector_db")
-collection = client.get_collection("uscode")
+# Connect to database
+db = lancedb.connect("data/vector_db")
+table = db.open_table("uscode")
 
-results = collection.query(
-    query_texts=["your query here"],
-    n_results=10
-)
+# Get embedding for query
+client = openai.OpenAI()
+response = client.embeddings.create(input=["your query"], model="text-embedding-3-small")
+query_vector = response.data[0].embedding
 
-for doc, meta in zip(results['documents'][0], results['metadatas'][0]):
-    print(f"{meta['identifier']}: {meta['heading']}")
+# Search
+results = table.search(query_vector).limit(10).to_list()
+
+for r in results:
+    print(f"{r['identifier']}: {r['heading']}")
 ```
 
 ### Filter by Metadata
 
 ```python
 # Search only in specific title
-results = collection.query(
-    query_texts=["copyright"],
-    where={"identifier": {"$regex": "^17 USC"}}
-)
+results = table.search(query_vector).where("title = '17'").limit(10).to_list()
 ```
 
 ## Technical Details
 
 ### Embedding Model
 
-- **Model**: sentence-transformers/all-MiniLM-L6-v2
-- **Dimensions**: 384
-- **Context window**: 512 tokens
-- **Language**: English
-- **Speed**: ~1000 sections/minute
+- **Model**: OpenAI text-embedding-3-small
+- **Dimensions**: 1536
+- **Context window**: 8191 tokens
+- **Language**: Multilingual
+- **Speed**: ~100 sections/second (API limited)
 
 ### Vector Database
 
-- **Engine**: ChromaDB
-- **Storage**: SQLite + HNSW index
-- **Distance metric**: Cosine similarity
+- **Engine**: LanceDB
+- **Storage**: Columnar Lance format
+- **Distance metric**: L2 (Euclidean)
 - **Persistence**: Local filesystem
 
 ### Limitations
@@ -258,18 +257,19 @@ for result in results:
 
 ## Future Enhancements
 
-- [ ] Add founding documents to vector DB
+- [x] Add founding documents to vector DB
+- [x] GPT integration for Q&A
+- [x] Claude integration for Q&A
 - [ ] Multi-query search (combine multiple queries)
 - [ ] Citation graph (link related sections)
 - [ ] Historical version tracking
-- [ ] GPT integration for Q&A
 - [ ] Export results to PDF/Word
 - [ ] Save favorite searches
 - [ ] Highlight matching terms
 
 ## Resources
 
-- [ChromaDB Documentation](https://docs.trychroma.com/)
-- [Sentence Transformers](https://www.sbert.net/)
+- [LanceDB Documentation](https://lancedb.github.io/lancedb/)
+- [OpenAI Embeddings](https://platform.openai.com/docs/guides/embeddings)
 - [US Code Website](https://uscode.house.gov/)
 - [Congress.gov API](https://api.congress.gov/)

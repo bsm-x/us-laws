@@ -109,17 +109,18 @@ python scripts/download/fetch_laws.py
 ## Tech Stack
 
 - **Backend**: FastAPI, Uvicorn
-- **Database**: ChromaDB (vector database)
-- **Embeddings**: OpenAI text-embedding-3-large
-- **LLM**: OpenAI GPT-4o (for RAG)
+- **Database**: LanceDB (vector database)
+- **Embeddings**: OpenAI text-embedding-3-small
+- **LLM**: OpenAI GPT-4o and Anthropic Claude Sonnet 4 (for RAG)
 - **Parsing**: Python xml.etree
 
 ## API Keys Required
 
-| Key                | Purpose                      | Required For                             |
-| ------------------ | ---------------------------- | ---------------------------------------- |
-| `CONGRESS_API_KEY` | Fetching public law metadata | `fetch_laws.py`, `fetch_policy_areas.py` |
-| `OPENAI_API_KEY`   | Embeddings and RAG           | Semantic search, Q&A features            |
+| Key                 | Purpose                      | Required For                             |
+| ------------------- | ---------------------------- | ---------------------------------------- |
+| `CONGRESS_API_KEY`  | Fetching public law metadata | `fetch_laws.py`, `fetch_policy_areas.py` |
+| `OPENAI_API_KEY`    | Embeddings and RAG           | Semantic search, Q&A features            |
+| `ANTHROPIC_API_KEY` | Claude LLM (optional)        | Alternative AI for Q&A                   |
 
 ## Documentation
 
