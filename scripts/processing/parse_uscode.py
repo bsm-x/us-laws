@@ -1,15 +1,30 @@
 """
 Parse US Code XML files
 Extracts sections, chapters, and text from USLM XML format
+
+Performance: Uses lxml if available (3-5x faster), falls back to stdlib
 """
 
-import xml.etree.ElementTree as ET
-from pathlib import Path
-from typing import List, Dict
+import logging
 import re
+from pathlib import Path
+from typing import List, Dict, Optional
+
+# Try lxml first (faster), fall back to stdlib
+try:
+    from lxml import etree as ET
+
+    USING_LXML = True
+except ImportError:
+    import xml.etree.ElementTree as ET
+
+    USING_LXML = False
+
+logger = logging.getLogger(__name__)
 
 # USLM namespace
 NS = {"uslm": "http://xml.house.gov/schemas/uslm/1.0"}
+USLM_NS = "{http://xml.house.gov/schemas/uslm/1.0}"
 
 
 class USCodeSection:
@@ -30,13 +45,17 @@ class USCodeSection:
         }
 
 
-def clean_text(element):
+def clean_text(element) -> str:
     """Extract clean text from XML element"""
     if element is None:
         return ""
 
     # Get all text including nested elements
-    text = ET.tostring(element, encoding="unicode", method="text")
+    if USING_LXML:
+        text = ET.tostring(element, encoding="unicode", method="text")
+    else:
+        text = ET.tostring(element, encoding="unicode", method="text")
+
     # Clean up whitespace
     text = re.sub(r"\s+", " ", text).strip()
     return text
@@ -45,7 +64,7 @@ def clean_text(element):
 def parse_section(section_elem, title_num: str) -> USCodeSection:
     """Parse a single section element"""
     # Get section number from <num> element (e.g., "§ 1.")
-    num_elem = section_elem.find(".//{http://xml.house.gov/schemas/uslm/1.0}num", NS)
+    num_elem = section_elem.find(f".//{USLM_NS}num", NS)
     section_num = ""
     if num_elem is not None:
         # Extract the value attribute (e.g., "1") or text (e.g., "§ 1.")
@@ -59,24 +78,18 @@ def parse_section(section_elem, title_num: str) -> USCodeSection:
     )
 
     # Get heading
-    heading_elem = section_elem.find(
-        ".//{http://xml.house.gov/schemas/uslm/1.0}heading", NS
-    )
+    heading_elem = section_elem.find(f".//{USLM_NS}heading", NS)
     heading = clean_text(heading_elem) if heading_elem is not None else ""
 
     # Get section text (all content)
     text_parts = []
-    for elem in section_elem.findall(
-        ".//{http://xml.house.gov/schemas/uslm/1.0}content", NS
-    ):
+    for elem in section_elem.findall(f".//{USLM_NS}content", NS):
         text_parts.append(clean_text(elem))
 
     text = "\n\n".join(text_parts)
 
     # Get notes if any
-    notes_elem = section_elem.find(
-        ".//{http://xml.house.gov/schemas/uslm/1.0}notes", NS
-    )
+    notes_elem = section_elem.find(f".//{USLM_NS}notes", NS)
     notes = clean_text(notes_elem) if notes_elem is not None else ""
 
     return USCodeSection(
@@ -95,7 +108,7 @@ def parse_uscode_xml(xml_file: Path) -> List[USCodeSection]:
 
         # Get title number from <title> element's <num> child
         title_elem = root.find(
-            ".//{http://xml.house.gov/schemas/uslm/1.0}title/{http://xml.house.gov/schemas/uslm/1.0}num",
+            f".//{USLM_NS}title/{USLM_NS}num",
             NS,
         )
         title_num = "?"
@@ -105,8 +118,6 @@ def parse_uscode_xml(xml_file: Path) -> List[USCodeSection]:
             if not title_num:
                 # Parse from text (e.g., "Title 1—" -> "1")
                 text = clean_text(title_elem)
-                import re
-
                 match = re.search(r"\d+", text)
                 if match:
                     title_num = match.group(0)
@@ -114,9 +125,7 @@ def parse_uscode_xml(xml_file: Path) -> List[USCodeSection]:
         sections = []
 
         # Find all section elements
-        for section in root.findall(
-            ".//{http://xml.house.gov/schemas/uslm/1.0}section", NS
-        ):
+        for section in root.findall(f".//{USLM_NS}section", NS):
             sec = parse_section(section, title_num)
             if sec.text:  # Only include sections with content
                 sections.append(sec)
@@ -124,7 +133,7 @@ def parse_uscode_xml(xml_file: Path) -> List[USCodeSection]:
         return sections
 
     except Exception as e:
-        print(f"Error parsing {xml_file}: {e}")
+        logger.error(f"Error parsing {xml_file}: {e}")
         return []
 
 
@@ -135,17 +144,17 @@ def get_title_structure(xml_file: Path) -> Dict:
         root = tree.getroot()
 
         # Get title info
-        title_elem = root.find(".//uslm:num", NS)
+        title_elem = root.find(f".//{USLM_NS}num", NS)
         title_num = clean_text(title_elem)
 
-        title_name_elem = root.find(".//uslm:heading", NS)
+        title_name_elem = root.find(f".//{USLM_NS}heading", NS)
         title_name = clean_text(title_name_elem)
 
         # Get chapters
         chapters = []
-        for chapter in root.findall(".//uslm:chapter", NS):
-            chapter_num_elem = chapter.find(".//uslm:num", NS)
-            chapter_heading_elem = chapter.find(".//uslm:heading", NS)
+        for chapter in root.findall(f".//{USLM_NS}chapter", NS):
+            chapter_num_elem = chapter.find(f".//{USLM_NS}num", NS)
+            chapter_heading_elem = chapter.find(f".//{USLM_NS}heading", NS)
 
             chapters.append(
                 {
@@ -165,7 +174,7 @@ def get_title_structure(xml_file: Path) -> Dict:
         return {"number": title_num, "name": title_name, "chapters": chapters}
 
     except Exception as e:
-        print(f"Error getting structure from {xml_file}: {e}")
+        logger.error(f"Error getting structure from {xml_file}: {e}")
         return {}
 
 

@@ -29,7 +29,7 @@ Remove-Item -Recurse -Force data\vector_db
 ## Step 3: Run with OpenAI Embeddings
 
 ```bash
-python create_vector_db.py
+python scripts/processing/create_vector_db.py
 ```
 
 ## What Changed:
@@ -73,7 +73,7 @@ This is a one-time cost. Searches are free after that.
 After creation completes, test it:
 
 ```bash
-python search_code.py "copyright protection duration"
+python scripts/processing/search_code.py "copyright protection duration"
 ```
 
 The results should be highly relevant to copyright law even if the exact phrase isn't used.
@@ -104,13 +104,13 @@ Once created, everything else works the same:
 **Command line:**
 
 ```bash
-python search_code.py "your query"
+python scripts/processing/search_code.py "your query"
 ```
 
 **Web interface:**
 
 ```bash
-python app.py
+python -m app.main
 # Visit http://localhost:8000/search
 ```
 

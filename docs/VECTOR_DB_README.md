@@ -15,7 +15,7 @@ pip install chromadb
 ### 2. Create Vector Database
 
 ```bash
-python create_vector_db.py
+python scripts/processing/create_vector_db.py
 ```
 
 **What happens:**
@@ -32,20 +32,20 @@ python create_vector_db.py
 
 ```bash
 # Simple search
-python search_code.py "copyright protection duration"
+python scripts/processing/search_code.py "copyright protection duration"
 
 # Get more results
-python search_code.py -n 20 "criminal penalties for fraud"
+python scripts/processing/search_code.py -n 20 "criminal penalties for fraud"
 
 # Interactive mode
-python search_code.py
+python scripts/processing/search_code.py
 ```
 
 #### Web Interface
 
 ```bash
 # Start web server
-python app.py
+python -m app.main
 
 # Visit http://localhost:8000/search
 ```
@@ -155,7 +155,7 @@ data/
 rm -rf data/vector_db
 
 # Create new one
-python create_vector_db.py
+python scripts/processing/create_vector_db.py
 ```
 
 ### Custom Queries
@@ -215,13 +215,13 @@ results = collection.query(
 ### "Vector database not found"
 
 ```bash
-python create_vector_db.py
+python scripts/processing/create_vector_db.py
 ```
 
 ### "No XML files found"
 
 ```bash
-python download_full_code.py
+python scripts/download/download_full_code.py
 # Choose option 1 to download all titles
 ```
 
@@ -243,7 +243,7 @@ python download_full_code.py
 ### Use in Your Code
 
 ```python
-from search_code import search
+from scripts.processing.search_code import search
 
 # Get results as data
 results = search("your query", n_results=5)

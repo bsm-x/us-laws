@@ -1,85 +1,85 @@
 """
 RAG (Retrieval-Augmented Generation) for US Code
 Answer questions using retrieved code sections + LLM
+
+Performance optimizations:
+- Singleton ChromaDB client (no reconnection per query)
+- Cached embedding function (reused across queries)
+- Connection pooled LLM clients
+- Proper logging instead of print statements
 """
 
-import chromadb
-from chromadb.utils import embedding_functions
-from pathlib import Path
-import os
-from dotenv import load_dotenv
+import logging
+from typing import List, Optional
+from functools import lru_cache
 
-# Load environment variables
-load_dotenv()
+from app.config import get_settings, setup_logging
+from app.database import get_vector_db, get_openai_client, get_anthropic_client
+from app.models import SearchResult, RAGResponse
 
-# Directories
-PROJECT_ROOT = Path(__file__).parent.parent
-DATA_DIR = PROJECT_ROOT / "data"
-VECTOR_DB_DIR = DATA_DIR / "vector_db"
+logger = logging.getLogger(__name__)
 
 
-def get_relevant_sections(query: str, n_results: int = 5):
-    """Retrieve relevant sections from vector database"""
+def get_relevant_sections(query: str, n_results: int = 5) -> List[SearchResult]:
+    """
+    Retrieve relevant sections from vector database
+    Uses singleton client for performance
+    """
+    settings = get_settings()
 
-    if not VECTOR_DB_DIR.exists():
-        raise Exception("Vector database not found. Run: python create_vector_db.py")
+    if not settings.validate_vector_db():
+        raise RuntimeError(
+            f"Vector database not found at {settings.vector_db_dir}. "
+            "Run: python scripts/processing/create_vector_db.py"
+        )
 
-    # Get OpenAI API key
-    api_key = os.getenv("OPENAI_API_KEY")
-    if not api_key:
-        raise Exception("OPENAI_API_KEY not found in environment")
+    if not settings.validate_openai():
+        raise RuntimeError("OPENAI_API_KEY required for embeddings")
 
-    # Create OpenAI embedding function
-    openai_ef = embedding_functions.OpenAIEmbeddingFunction(
-        api_key=api_key, model_name="text-embedding-3-large"
-    )
-
-    # Load collection
-    client = chromadb.PersistentClient(path=str(VECTOR_DB_DIR))
-    collection = client.get_collection(name="uscode", embedding_function=openai_ef)
-
-    # Search
-    results = collection.query(query_texts=[query], n_results=n_results)
+    # Use singleton client (no reconnection overhead)
+    db = get_vector_db()
+    results = db.search(query, n_results=n_results)
 
     if not results["documents"][0]:
         return []
 
-    # Format results
+    # Convert to Pydantic models
     sections = []
     for doc, meta, distance in zip(
-        results["documents"][0], results["metadatas"][0], results["distances"][0]
+        results["documents"][0],
+        results["metadatas"][0],
+        results["distances"][0],
     ):
         sections.append(
-            {
-                "identifier": meta["identifier"],
-                "heading": meta["heading"],
-                "text": doc,
-                "relevance": 1 - distance,
-            }
+            SearchResult(
+                identifier=meta["identifier"],
+                heading=meta["heading"],
+                text=doc,
+                relevance=1 - distance,
+            )
         )
 
+    logger.debug(f"Retrieved {len(sections)} sections for query: {query[:50]}...")
     return sections
 
 
-def answer_with_openai(question: str, sections: list, model: str = "gpt-4o"):
-    """Generate answer using OpenAI"""
-    try:
-        from openai import OpenAI
-    except ImportError:
-        raise Exception("OpenAI library not installed. Run: pip install openai")
+def answer_with_openai(
+    question: str,
+    sections: List[SearchResult],
+    model: Optional[str] = None,
+) -> str:
+    """Generate answer using OpenAI (connection pooled)"""
+    settings = get_settings()
+    model = model or settings.default_openai_model
 
-    api_key = os.getenv("OPENAI_API_KEY")
-    if not api_key:
-        raise Exception("OPENAI_API_KEY not found in environment")
-
-    client = OpenAI(api_key=api_key)
+    # Use pooled client
+    client = get_openai_client()
 
     # Build context from sections
     context = "\n\n".join(
-        [f"[{s['identifier']}] {s['heading']}\n{s['text'][:2000]}" for s in sections]
+        [f"[{s.identifier}] {s.heading}\n{s.text[:2000]}" for s in sections]
     )
 
-    # Create prompt
     prompt = f"""You are a legal expert assistant helping users understand US federal law. Answer the question based ONLY on the provided US Code sections. Be precise and cite specific sections when relevant.
 
 US CODE SECTIONS:
@@ -89,7 +89,8 @@ QUESTION: {question}
 
 ANSWER (cite specific sections):"""
 
-    # Call OpenAI
+    logger.debug(f"Calling OpenAI {model}")
+
     response = client.chat.completions.create(
         model=model,
         messages=[
@@ -99,34 +100,30 @@ ANSWER (cite specific sections):"""
             },
             {"role": "user", "content": prompt},
         ],
-        temperature=0.3,
-        max_tokens=2000,
+        temperature=settings.rag_temperature,
+        max_tokens=settings.rag_max_tokens,
     )
 
-    return response.choices[0].message.content
+    return response.choices[0].message.content or ""
 
 
 def answer_with_anthropic(
-    question: str, sections: list, model: str = "claude-sonnet-4-20250514"
-):
-    """Generate answer using Anthropic Claude"""
-    try:
-        from anthropic import Anthropic
-    except ImportError:
-        raise Exception("Anthropic library not installed. Run: pip install anthropic")
+    question: str,
+    sections: List[SearchResult],
+    model: Optional[str] = None,
+) -> str:
+    """Generate answer using Anthropic Claude (connection pooled)"""
+    settings = get_settings()
+    model = model or settings.default_anthropic_model
 
-    api_key = os.getenv("ANTHROPIC_API_KEY")
-    if not api_key:
-        raise Exception("ANTHROPIC_API_KEY not found in environment")
-
-    client = Anthropic(api_key=api_key)
+    # Use pooled client
+    client = get_anthropic_client()
 
     # Build context from sections
     context = "\n\n".join(
-        [f"[{s['identifier']}] {s['heading']}\n{s['text'][:2000]}" for s in sections]
+        [f"[{s.identifier}] {s.heading}\n{s.text[:2000]}" for s in sections]
     )
 
-    # Create prompt
     prompt = f"""You are a legal expert assistant helping users understand US federal law. Answer the question based ONLY on the provided US Code sections. Be precise and cite specific sections when relevant.
 
 US CODE SECTIONS:
@@ -136,158 +133,224 @@ QUESTION: {question}
 
 ANSWER (cite specific sections):"""
 
-    # Call Anthropic
+    logger.debug(f"Calling Anthropic {model}")
+
     response = client.messages.create(
         model=model,
-        max_tokens=2000,
-        temperature=0.3,
+        max_tokens=settings.rag_max_tokens,
+        temperature=settings.rag_temperature,
         system="You are a helpful legal expert who answers questions based on US federal law. Always cite specific sections and be precise.",
         messages=[{"role": "user", "content": prompt}],
     )
 
-    return response.content[0].text
+    # Extract text from first content block
+    if response.content and hasattr(response.content[0], "text"):
+        return response.content[0].text
+    return ""
+
+
+def stream_with_openai(
+    question: str,
+    sections: List[SearchResult],
+    model: Optional[str] = None,
+):
+    """Stream answer using OpenAI"""
+    settings = get_settings()
+    model = model or settings.default_openai_model
+
+    client = get_openai_client()
+
+    context = "\n\n".join(
+        [f"[{s.identifier}] {s.heading}\n{s.text[:2000]}" for s in sections]
+    )
+
+    prompt = f"""You are a legal expert assistant helping users understand US federal law. Answer the question based ONLY on the provided US Code sections. Be precise and cite specific sections when relevant.
+
+US CODE SECTIONS:
+{context}
+
+QUESTION: {question}
+
+ANSWER (cite specific sections):"""
+
+    logger.debug(f"Streaming OpenAI {model}")
+
+    stream = client.chat.completions.create(
+        model=model,
+        messages=[
+            {
+                "role": "system",
+                "content": "You are a helpful legal expert who answers questions based on US federal law. Always cite specific sections and be precise.",
+            },
+            {"role": "user", "content": prompt},
+        ],
+        temperature=settings.rag_temperature,
+        max_tokens=settings.rag_max_tokens,
+        stream=True,
+    )
+
+    for chunk in stream:
+        if chunk.choices[0].delta.content:
+            yield chunk.choices[0].delta.content
+
+
+def stream_with_anthropic(
+    question: str,
+    sections: List[SearchResult],
+    model: Optional[str] = None,
+):
+    """Stream answer using Anthropic Claude"""
+    settings = get_settings()
+    model = model or settings.default_anthropic_model
+
+    client = get_anthropic_client()
+
+    context = "\n\n".join(
+        [f"[{s.identifier}] {s.heading}\n{s.text[:2000]}" for s in sections]
+    )
+
+    prompt = f"""You are a legal expert assistant helping users understand US federal law. Answer the question based ONLY on the provided US Code sections. Be precise and cite specific sections when relevant.
+
+US CODE SECTIONS:
+{context}
+
+QUESTION: {question}
+
+ANSWER (cite specific sections):"""
+
+    logger.debug(f"Streaming Anthropic {model}")
+
+    with client.messages.stream(
+        model=model,
+        max_tokens=settings.rag_max_tokens,
+        temperature=settings.rag_temperature,
+        system="You are a helpful legal expert who answers questions based on US federal law. Always cite specific sections and be precise.",
+        messages=[{"role": "user", "content": prompt}],
+    ) as stream:
+        for text in stream.text_stream:
+            yield text
 
 
 def rag_query(
     question: str,
-    provider: str = "openai",
-    model: str = None,
-    n_sections: int = 5,
+    provider: Optional[str] = None,
+    model: Optional[str] = None,
+    n_sections: Optional[int] = None,
     verbose: bool = True,
-):
+) -> RAGResponse:
     """
     Complete RAG pipeline: retrieve + generate answer
 
     Args:
         question: User's question
-        provider: 'openai' or 'anthropic'
-        model: Model name (optional, uses defaults)
+        provider: 'openai' or 'anthropic' (default from config)
+        model: Model name (optional, uses defaults from config)
         n_sections: Number of sections to retrieve
-        verbose: Print retrieval info
+        verbose: Print progress info
 
     Returns:
-        dict with answer, sections, and metadata
+        RAGResponse with answer, sections, and metadata
     """
+    settings = get_settings()
+
+    provider = provider or settings.default_llm_provider
+    n_sections = n_sections or settings.rag_n_sections
 
     if verbose:
-        print(f"\n{'='*70}")
-        print(f"QUESTION: {question}")
-        print(f"{'='*70}\n")
-        print(f"📚 Retrieving relevant sections...")
+        logger.info(f"RAG Query: {question[:100]}...")
+        logger.info(f"Provider: {provider}, Sections: {n_sections}")
 
     # Retrieve relevant sections
     sections = get_relevant_sections(question, n_sections)
 
     if not sections:
-        return {
-            "answer": "No relevant sections found in the US Code.",
-            "sections": [],
-            "provider": provider,
-        }
+        return RAGResponse(
+            answer="No relevant sections found in the US Code.",
+            sections=[],
+            provider=provider,
+            model="none",
+        )
 
     if verbose:
-        print(f"✓ Found {len(sections)} relevant sections\n")
-        print("Most relevant:")
-        for i, s in enumerate(sections[:3], 1):
-            print(
-                f"  {i}. {s['identifier']}: {s['heading']} ({s['relevance']:.1%} match)"
-            )
-        print(f"\n🤖 Generating answer using {provider.upper()}...")
+        logger.info(f"Found {len(sections)} relevant sections")
+        for s in sections[:3]:
+            logger.debug(f"  - {s.identifier}: {s.heading} ({s.relevance:.1%})")
 
     # Generate answer
     if provider.lower() == "openai":
-        default_model = model or "gpt-4o"
-        answer = answer_with_openai(question, sections, default_model)
+        used_model = model or settings.default_openai_model
+        answer = answer_with_openai(question, sections, used_model)
     elif provider.lower() == "anthropic":
-        default_model = model or "claude-3-5-sonnet-20241022"
-        answer = answer_with_anthropic(question, sections, default_model)
+        used_model = model or settings.default_anthropic_model
+        answer = answer_with_anthropic(question, sections, used_model)
     else:
         raise ValueError(f"Unknown provider: {provider}. Use 'openai' or 'anthropic'")
 
     if verbose:
-        print(f"\n{'='*70}")
-        print("ANSWER:")
-        print(f"{'='*70}\n")
-        print(answer)
-        print(f"\n{'='*70}")
-        print(f"Sources: {len(sections)} sections")
-        print(f"{'='*70}\n")
+        logger.info(f"Generated answer using {provider}/{used_model}")
 
-    return {
-        "answer": answer,
-        "sections": sections,
-        "provider": provider,
-        "model": default_model,
-    }
+    return RAGResponse(
+        answer=answer,
+        sections=sections,
+        provider=provider,
+        model=used_model,
+    )
+
+
+# Async version for FastAPI
+async def rag_query_async(
+    question: str,
+    provider: Optional[str] = None,
+    model: Optional[str] = None,
+    n_sections: Optional[int] = None,
+) -> RAGResponse:
+    """Async wrapper for RAG query (runs in thread pool)"""
+    import asyncio
+    from concurrent.futures import ThreadPoolExecutor
+
+    loop = asyncio.get_event_loop()
+    with ThreadPoolExecutor() as pool:
+        result = await loop.run_in_executor(
+            pool,
+            lambda: rag_query(question, provider, model, n_sections, verbose=False),
+        )
+    return result
 
 
 if __name__ == "__main__":
     import sys
 
-    # Example questions
+    # Setup logging for CLI
+    setup_logging("INFO")
+
     examples = [
         "How long does copyright protection last?",
         "What are the criminal penalties for wire fraud?",
         "Can I deduct home office expenses on my taxes?",
-        "What is the minimum wage under federal law?",
-        "What constitutes workplace discrimination?",
     ]
 
     if len(sys.argv) > 1:
-        # Question from command line
         question = " ".join(sys.argv[1:])
 
-        # Check for provider flag
         provider = "openai"
-        if "--claude" in sys.argv or "--anthropic" in sys.argv:
+        if "--claude" in question or "--anthropic" in question:
             provider = "anthropic"
             question = (
                 question.replace("--claude", "").replace("--anthropic", "").strip()
             )
 
         result = rag_query(question, provider=provider)
+
+        print(f"\n{'='*70}")
+        print("ANSWER:")
+        print(f"{'='*70}\n")
+        print(result.answer)
+        print(f"\n{'='*70}")
+        print(f"Sources: {len(result.sections)} sections | Model: {result.model}")
     else:
-        # Interactive mode
-        print(
-            """
-╔══════════════════════════════════════════════════════════════════╗
-║              RAG - Ask Questions About US Code                   ║
-╚══════════════════════════════════════════════════════════════════╝
-
-Ask natural language questions and get answers based on actual US Code.
-
-Examples:
-"""
-        )
+        print("\nUsage: python -m app.rag 'your question here'")
+        print("\nExamples:")
         for ex in examples:
             print(f"  • {ex}")
-
         print("\nOptions:")
         print("  --claude    Use Claude instead of GPT-4")
-        print("  quit        Exit")
-        print()
-
-        while True:
-            try:
-                question = input("\n💬 Your question: ").strip()
-
-                if question.lower() in ["quit", "exit", "q"]:
-                    print("Goodbye!")
-                    break
-
-                if not question:
-                    continue
-
-                # Check for provider
-                provider = "openai"
-                if question.startswith("--claude"):
-                    provider = "anthropic"
-                    question = question.replace("--claude", "").strip()
-
-                result = rag_query(question, provider=provider)
-
-            except KeyboardInterrupt:
-                print("\n\nGoodbye!")
-                break
-            except Exception as e:
-                print(f"\n❌ Error: {e}\n")

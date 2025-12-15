@@ -102,7 +102,7 @@ python download_full_code.py
 ### 2. Run the web viewer
 
 ```bash
-python app.py
+python -m app.main
 # Visit: http://localhost:8000
 ```
 

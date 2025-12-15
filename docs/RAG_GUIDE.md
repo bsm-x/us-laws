@@ -33,13 +33,13 @@ Visit http://localhost:8000/ask
 
 ```bash
 # Using OpenAI GPT-4 (default)
-python rag.py "How long does copyright protection last?"
+python -m app.rag "How long does copyright protection last?"
 
 # Using Anthropic Claude
-python rag.py --claude "What are penalties for wire fraud?"
+python -m app.rag --claude "What are penalties for wire fraud?"
 
 # Interactive mode
-python rag.py
+python -m app.rag
 ```
 
 ## Example Questions
@@ -161,7 +161,7 @@ Very affordable for personal use!
 ### Python API
 
 ```python
-from rag import rag_query
+from app.rag import rag_query
 
 # Get complete result
 result = rag_query(
@@ -171,19 +171,19 @@ result = rag_query(
     verbose=True  # print progress
 )
 
-print(result['answer'])
-print(f"Used {len(result['sections'])} sections")
+print(result.answer)
+print(f"Used {len(result.sections)} sections")
 
 # Access sources
-for section in result['sections']:
-    print(f"{section['identifier']}: {section['heading']}")
-    print(f"Relevance: {section['relevance']:.1%}")
+for section in result.sections:
+    print(f"{section.identifier}: {section.heading}")
+    print(f"Relevance: {section.relevance:.1%}")
 ```
 
 ### Custom Retrieval
 
 ```python
-from rag import get_relevant_sections
+from app.rag import get_relevant_sections
 
 # Get sections without generating answer
 sections = get_relevant_sections(
@@ -233,7 +233,7 @@ for s in sections:
 **"Vector database not found"**
 
 ```bash
-python create_vector_db.py
+python scripts/processing/create_vector_db.py
 ```
 
 **"OPENAI_API_KEY not found"**
