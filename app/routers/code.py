@@ -61,64 +61,55 @@ async def code_structure():
     """View US Code structure"""
     titles = load_titles()
 
-    rows = ""
-    for title in titles:
-        enacted = title.get("Enacted as Positive Law", "") == "Yes"
-        tag = (
-            '<span class="tag enacted">Enacted</span>'
-            if enacted
-            else '<span class="tag">Not Enacted</span>'
-        )
+    # Build compact title items
+    def make_title_item(title):
         title_num = title.get("Title Number", "")
-        rows += f"""
-        <tr>
-            <td>{title_num}</td>
-            <td>{title.get('Title Name', '')}</td>
-            <td>{tag}</td>
-            <td><a href="/code/{title_num}">View →</a></td>
-        </tr>
-        """
+        title_name = title.get("Title Name", "")
+        return f'<a href="/code/{title_num}" class="title-item"><span class="title-num">{title_num}</span>{title_name}</a>'
+
+    title_items = "\n".join(make_title_item(t) for t in titles)
 
     content = f"""
-    <h1>US Code Structure</h1>
-    <p>The United States Code organizes all federal statutes into 54 subject titles.</p>
+    <style>
+        .titles-grid {{
+            display: grid;
+            grid-template-rows: repeat(14, auto);
+            grid-auto-flow: column;
+            gap: 0.25rem 1rem;
+        }}
+        .title-item {{
+            color: #c9d1d9;
+            text-decoration: none;
+            padding: 0.35rem 0.5rem;
+            border-radius: 4px;
+            font-size: 0.85rem;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            transition: background 0.15s;
+        }}
+        .title-item:hover {{
+            background: #21262d;
+            color: #58a6ff;
+        }}
+        .title-num {{
+            color: #58a6ff;
+            font-weight: 600;
+            margin-right: 0.4rem;
+            min-width: 1.5rem;
+            display: inline-block;
+        }}
+    </style>
 
-    <div class="stats">
-        <div class="stat-card">
-            <div class="number">{len(titles)}</div>
-            <div class="label">Total Titles</div>
-        </div>
-        <div class="stat-card">
-            <div class="number">{sum(1 for t in titles if t.get('Enacted as Positive Law') == 'Yes')}</div>
-            <div class="label">Enacted as Positive Law</div>
-        </div>
+    <h1 style="margin-bottom: 0.5rem;"><span class="material-icons" style="vertical-align: middle; margin-right: 0.5rem;">menu_book</span>US Code</h1>
+    <p style="color: #8b949e; margin-bottom: 1rem; font-size: 0.9rem;">Click any title to view its sections.</p>
+
+    <div class="titles-grid">
+        {title_items}
     </div>
 
-    <h2>All Titles</h2>
-    <div class="table-wrapper">
-        <table>
-            <thead>
-                <tr>
-                    <th style="width: 80px;">#</th>
-                    <th>Title Name</th>
-                    <th style="width: 120px;">Status</th>
-                    <th style="width: 100px;">View</th>
-                </tr>
-            </thead>
-            <tbody>
-                {rows}
-            </tbody>
-        </table>
-    </div>
-
-    <h2>About the US Code</h2>
-    <p>
-        <strong>Enacted as Positive Law</strong> means the title itself has been enacted by Congress
-        and is legal evidence of the law. Non-enacted titles are organized compilations where the
-        underlying statutes (Statutes at Large) are the actual legal authority.
-    </p>
-    <p style="margin-top: 1rem;">
-        <a href="https://uscode.house.gov/" target="_blank">Official US Code →</a>
+    <p style="margin-top: 1rem; font-size: 0.85rem;">
+        <a href="https://uscode.house.gov/" target="_blank" style="color: #58a6ff;">uscode.house.gov →</a>
     </p>
     """
 

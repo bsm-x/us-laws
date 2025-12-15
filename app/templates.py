@@ -302,23 +302,14 @@ def render_page(title: str, content: str, nav_active: str = "") -> str:
         </div>
         <nav>
             <a href="/" class="{'active' if nav_active == 'home' else ''}">
-                <span class="material-icons">chat</span>
-                Ask AI
+                <span class="material-icons">search</span>
+                AI Search
+            </a>
+            <a href="/code" class="{'active' if nav_active == 'code' else ''}">
+                <span class="material-icons">menu_book</span>
+                US Code
             </a>
         </nav>
-        <div class="nav-section">
-            <div class="nav-section-title">Browse</div>
-            <nav>
-                <a href="/laws" class="{'active' if nav_active == 'laws' else ''}">
-                    <span class="material-icons">article</span>
-                    Public Laws
-                </a>
-                <a href="/code" class="{'active' if nav_active == 'code' else ''}">
-                    <span class="material-icons">menu_book</span>
-                    US Code
-                </a>
-            </nav>
-        </div>
     </aside>
     <main class="main-content">
         {content}

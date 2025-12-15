@@ -1,15 +1,14 @@
 """
 Database client management
-Singleton pattern for ChromaDB and API clients with connection pooling
+Singleton pattern for LanceDB and API clients with connection pooling
 """
 
 import logging
 from functools import lru_cache
-from typing import Optional
+from typing import Optional, List
 
-import chromadb
-from chromadb.api import ClientAPI
-from chromadb.utils import embedding_functions
+import lancedb
+import openai
 
 from app.config import get_settings
 
@@ -17,12 +16,12 @@ logger = logging.getLogger(__name__)
 
 
 class VectorDBClient:
-    """Singleton wrapper for ChromaDB with cached embedding function"""
+    """Singleton wrapper for LanceDB with OpenAI embeddings"""
 
     _instance: Optional["VectorDBClient"] = None
-    _client: Optional[ClientAPI] = None
-    _collection = None
-    _embedding_function = None
+    _db = None
+    _table = None
+    _openai_client = None
 
     def __new__(cls):
         if cls._instance is None:
@@ -31,7 +30,7 @@ class VectorDBClient:
 
     def __init__(self):
         # Only initialize once
-        if self._client is not None:
+        if self._db is not None:
             return
 
         settings = get_settings()
@@ -42,64 +41,88 @@ class VectorDBClient:
             )
             return
 
-        logger.info(f"Initializing ChromaDB client at {settings.vector_db_dir}")
+        logger.info(f"Initializing LanceDB client at {settings.vector_db_dir}")
 
-        # Create persistent client (connection pooled internally by ChromaDB)
-        self._client = chromadb.PersistentClient(path=str(settings.vector_db_dir))
+        # Create LanceDB connection
+        self._db = lancedb.connect(str(settings.vector_db_dir))
 
-        # Create embedding function once (reused for all queries)
+        # Create OpenAI client for embeddings
         if settings.validate_openai():
-            self._embedding_function = embedding_functions.OpenAIEmbeddingFunction(
-                api_key=settings.openai_api_key,
-                model_name=settings.embedding_model,
-            )
+            self._openai_client = openai.OpenAI(api_key=settings.openai_api_key)
             logger.info(f"Using OpenAI embeddings: {settings.embedding_model}")
         else:
-            logger.warning("OpenAI API key not set - using default embeddings")
-            self._embedding_function = embedding_functions.DefaultEmbeddingFunction()
+            logger.warning("OpenAI API key not set - embeddings will fail")
 
     @property
-    def client(self) -> Optional[ClientAPI]:
-        """Get the ChromaDB client"""
-        return self._client
+    def db(self):
+        """Get the LanceDB connection"""
+        return self._db
 
-    @property
-    def embedding_function(self):
-        """Get the cached embedding function"""
-        return self._embedding_function
+    def _get_embedding(self, text: str) -> List[float]:
+        """Get embedding for a query using OpenAI"""
+        settings = get_settings()
+        response = self._openai_client.embeddings.create(
+            input=[text], model=settings.embedding_model
+        )
+        return response.data[0].embedding
 
-    def get_collection(self, name: Optional[str] = None):
-        """Get or create a collection with cached embedding function"""
-        if self._client is None:
-            raise RuntimeError("ChromaDB client not initialized")
+    def get_table(self, name: Optional[str] = None):
+        """Get a LanceDB table"""
+        if self._db is None:
+            raise RuntimeError("LanceDB client not initialized")
 
         settings = get_settings()
-        collection_name = name or settings.vector_db_collection
+        table_name = name or settings.vector_db_collection
 
-        # Cache collection reference
-        if self._collection is None or self._collection.name != collection_name:
+        # Cache table reference
+        if self._table is None:
             try:
-                self._collection = self._client.get_collection(
-                    name=collection_name,
-                    embedding_function=self._embedding_function,
-                )
-                logger.debug(f"Loaded collection: {collection_name}")
+                self._table = self._db.open_table(table_name)
+                logger.debug(f"Loaded table: {table_name}")
             except Exception as e:
-                logger.error(f"Failed to get collection {collection_name}: {e}")
+                logger.error(f"Failed to open table {table_name}: {e}")
                 raise
 
-        return self._collection
+        return self._table
 
     def search(self, query: str, n_results: int = 10) -> dict:
-        """Search the vector database"""
-        collection = self.get_collection()
-        return collection.query(query_texts=[query], n_results=n_results)
+        """Search the vector database - returns ChromaDB-compatible format"""
+        table = self.get_table()
+
+        # Get query embedding
+        query_embedding = self._get_embedding(query)
+
+        # Search LanceDB
+        results = table.search(query_embedding).limit(n_results).to_list()
+
+        # Convert to ChromaDB-compatible format for backwards compatibility
+        documents = []
+        metadatas = []
+        distances = []
+
+        for r in results:
+            documents.append(r.get("text", ""))
+            metadatas.append(
+                {
+                    "identifier": r.get("identifier", ""),
+                    "heading": r.get("heading", ""),
+                    "title": r.get("title", ""),
+                    "text_length": r.get("text_length", 0),
+                }
+            )
+            distances.append(r.get("_distance", 0))
+
+        return {
+            "documents": [documents],
+            "metadatas": [metadatas],
+            "distances": [distances],
+        }
 
     def reset(self):
         """Reset the singleton (for testing)"""
-        self._client = None
-        self._collection = None
-        self._embedding_function = None
+        self._db = None
+        self._table = None
+        self._openai_client = None
         VectorDBClient._instance = None
 
 

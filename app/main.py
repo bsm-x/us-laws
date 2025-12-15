@@ -29,7 +29,6 @@ import uvicorn
 from app.config import get_settings, setup_logging
 from app.models import HealthResponse
 from app.routers import (
-    laws_router,
     code_router,
     ask_router,
 )
@@ -58,8 +57,8 @@ async def lifespan(app: FastAPI):
 
         try:
             db = get_vector_db()
-            collection = db.get_collection()
-            count = collection.count()
+            table = db.get_table()
+            count = table.count_rows()
             logger.info(f"Vector DB initialized: {count:,} sections indexed")
         except Exception as e:
             logger.warning(f"Failed to initialize vector DB: {e}")
@@ -94,8 +93,7 @@ app = FastAPI(
 )
 
 # Include routers
-app.include_router(ask_router)  # Home page (Ask AI at /)
-app.include_router(laws_router)
+app.include_router(ask_router)  # Home page (AI Search at /)
 app.include_router(code_router)
 
 
@@ -106,8 +104,8 @@ async def health_check():
         from app.database import get_vector_db
 
         db = get_vector_db()
-        collection = db.get_collection()
-        sections_count = collection.count()
+        table = db.get_table()
+        sections_count = table.count_rows()
     except Exception:
         sections_count = 0
 

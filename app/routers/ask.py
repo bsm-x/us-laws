@@ -108,39 +108,36 @@ async def stream_answer(q: str = Query(...), provider: str = Query("openai")):
 
 
 @router.get("/", response_class=HTMLResponse)
-async def ask_ai(q: str = Query(""), provider: str = Query("openai")):
-    """RAG: Ask questions and get AI-generated answers with streaming"""
+async def ask_ai(q: str = Query(""), provider: str = Query("anthropic")):
+    """AI Search: Ask questions and get AI-generated answers with streaming"""
 
     # Check if vector DB exists
     if VECTOR_DB_DIR is None or not VECTOR_DB_DIR.exists():
         content = """
-        <h1><span class="material-icons" style="vertical-align: middle;">chat</span> Ask AI About US Code</h1>
+        <h1><span class="material-icons" style="vertical-align: middle;">search</span> Search the US Code</h1>
         <div class="alert warning">
             <h3><span class="material-icons" style="vertical-align: middle;">warning</span> Vector Database Required</h3>
-            <p>To use AI Q&A, create the vector database first:</p>
+            <p>To use AI Search, create the vector database first:</p>
             <pre>python scripts/processing/create_vector_db.py</pre>
         </div>
         """
-        return render_page("Ask AI", content, "home")
+        return render_page("AI Search", content, "home")
 
     # Form HTML with streaming JavaScript
     form_html = f"""
     <div style="display: flex; align-items: center; gap: 1rem; margin-bottom: 1rem;">
         <h1 style="margin: 0; display: flex; align-items: center; gap: 0.5rem;">
-            <span class="material-icons" style="font-size: 2rem;">chat</span>
-            Ask Questions About US Code
+            <span class="material-icons" style="font-size: 2rem;">search</span>
+            Search the US Code
         </h1>
-        <span style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white; padding: 0.25rem 0.75rem; border-radius: 12px; font-size: 0.75rem; font-weight: bold;">
-            RAG Powered
-        </span>
     </div>
     <p style="color: #8b949e; margin-bottom: 2rem;">Ask natural language questions and get AI-generated answers based on actual US Code sections.</p>
 
     <form id="askForm" class="search-box" style="margin: 2rem 0;">
         <input type="text" id="questionInput" name="q" placeholder="e.g., 'How long does copyright protection last?'" value="{q}" style="flex: 1;" autofocus>
         <select id="providerSelect" name="provider">
-            <option value="openai" {"selected" if provider == "openai" else ""}>GPT-4</option>
             <option value="anthropic" {"selected" if provider == "anthropic" else ""}>Claude</option>
+            <option value="openai" {"selected" if provider == "openai" else ""}>GPT-4</option>
         </select>
         <button type="submit" id="askButton">Ask</button>
     </form>
@@ -163,7 +160,7 @@ async def ask_ai(q: str = Query(""), provider: str = Query("openai")):
     const urlParams = new URLSearchParams(window.location.search);
     const initialQuery = urlParams.get('q');
     if (initialQuery) {{
-        streamAnswer(initialQuery, urlParams.get('provider') || 'openai');
+        streamAnswer(initialQuery, urlParams.get('provider') || 'anthropic');
     }}
 
     form.addEventListener('submit', async (e) => {{
@@ -196,10 +193,10 @@ async def ask_ai(q: str = Query(""), provider: str = Query("openai")):
                     <span style="color: #8b949e;">Searching relevant sections...</span>
                 </div>
                 <div id="sourcesContainer" style="display: none;">
-                    <h3 style="margin: 2rem 0 1rem; display: flex; align-items: center; gap: 0.5rem;">
-                        <span class="material-icons">source</span> <span id="sourcesTitle">Sources</span>
+                    <h3 style="margin: 2rem 0 1rem; display: flex; align-items: center; gap: 0.5rem; color: #f0f6fc;">
+                        <span class="material-icons" style="color: #58a6ff;">source</span> <span id="sourcesTitle">Sources</span>
                     </h3>
-                    <div id="sourcesList" style="display: flex; flex-direction: column; gap: 0.5rem;"></div>
+                    <div id="sourcesList"></div>
                 </div>
             </div>
         `;
@@ -233,18 +230,41 @@ async def ask_ai(q: str = Query(""), provider: str = Query("openai")):
                                 sourcesTitle.textContent = `Sources (${{data.content.length}} sections)`;
 
                                 sourcesList.innerHTML = data.content.map(s => {{
-                                    const titleNum = s.identifier.split(' ')[0];
-                                    const viewLink = /^\\d+$/.test(titleNum)
-                                        ? `<a href="/code/${{titleNum}}" style="font-size: 0.9rem;">View →</a>`
-                                        : '';
+                                    // Parse identifier like "/us/usc/t29/s206" to get title and section
+                                    const identMatch = s.identifier.match(/\\/us\\/usc\\/t(\\d+)\\/s(.+)$/);
+                                    let uscLink = '';
+                                    let displayName = s.identifier;
+
+                                    if (identMatch) {{
+                                        const titleNum = identMatch[1];
+                                        const sectionNum = identMatch[2];
+                                        uscLink = `https://uscode.house.gov/view.xhtml?req=granuleid:USC-prelim-title${{titleNum}}-section${{sectionNum}}&edition=prelim`;
+                                        displayName = `USC Title ${{titleNum}} Section ${{sectionNum}}`;
+                                    }}
+
+                                    // Calculate relevance bar width and color
+                                    const relevancePercent = Math.round(s.relevance * 100);
+                                    const relevanceColor = relevancePercent >= 70 ? '#238636' : relevancePercent >= 40 ? '#f0883e' : '#8b949e';
+
                                     return `
-                                        <div style="padding: 1rem; background: #21262d; border-radius: 6px; border-left: 3px solid #58a6ff;">
-                                            <div style="display: flex; justify-content: space-between; align-items: center;">
-                                                <div>
-                                                    <strong style="color: #f0f6fc;">${{s.identifier}}</strong>: ${{s.heading}}
-                                                    <span style="color: #8b949e; font-size: 0.85rem; margin-left: 0.5rem;">(${{Math.round(s.relevance * 100)}}% relevant)</span>
+                                        <div class="source-card">
+                                            <div class="source-header">
+                                                <div class="source-title-section">
+                                                    ${{uscLink
+                                                        ? `<a href="${{uscLink}}" target="_blank" rel="noopener noreferrer" class="source-link">
+                                                               <span class="material-icons" style="font-size: 1rem; vertical-align: middle;">open_in_new</span>
+                                                               ${{displayName}}
+                                                           </a>`
+                                                        : `<span class="source-identifier">${{displayName}}</span>`
+                                                    }}
                                                 </div>
-                                                ${{viewLink}}
+                                                <div class="relevance-badge" style="background: ${{relevanceColor}}20; color: ${{relevanceColor}}; border: 1px solid ${{relevanceColor}}40;">
+                                                    ${{relevancePercent}}% match
+                                                </div>
+                                            </div>
+                                            <div class="source-heading">${{s.heading}}</div>
+                                            <div class="relevance-bar-container">
+                                                <div class="relevance-bar" style="width: ${{relevancePercent}}%; background: ${{relevanceColor}};"></div>
                                             </div>
                                         </div>
                                     `;
@@ -340,6 +360,81 @@ async def ask_ai(q: str = Query(""), provider: str = Query("openai")):
         margin: 0.5rem 0;
         color: #8b949e;
     }}
+
+    /* Source Cards Styling */
+    .source-card {{
+        background: #161b22;
+        border: 1px solid #30363d;
+        border-radius: 8px;
+        padding: 1rem 1.25rem;
+        transition: all 0.2s ease;
+    }}
+    .source-card:hover {{
+        border-color: #58a6ff;
+        box-shadow: 0 4px 12px rgba(88, 166, 255, 0.15);
+        transform: translateY(-2px);
+    }}
+    .source-header {{
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        margin-bottom: 0.5rem;
+        flex-wrap: wrap;
+        gap: 0.5rem;
+    }}
+    .source-title-section {{
+        display: flex;
+        align-items: center;
+        gap: 0.5rem;
+    }}
+    .source-link {{
+        color: #58a6ff;
+        text-decoration: none;
+        font-weight: 600;
+        font-size: 0.95rem;
+        display: inline-flex;
+        align-items: center;
+        gap: 0.35rem;
+        transition: color 0.2s;
+    }}
+    .source-link:hover {{
+        color: #79c0ff;
+        text-decoration: underline;
+    }}
+    .source-identifier {{
+        color: #f0f6fc;
+        font-weight: 600;
+        font-size: 0.95rem;
+    }}
+    .relevance-badge {{
+        padding: 0.25rem 0.6rem;
+        border-radius: 12px;
+        font-size: 0.75rem;
+        font-weight: 600;
+        white-space: nowrap;
+    }}
+    .source-heading {{
+        color: #c9d1d9;
+        font-size: 0.9rem;
+        margin-bottom: 0.75rem;
+        line-height: 1.4;
+    }}
+    .relevance-bar-container {{
+        height: 4px;
+        background: #21262d;
+        border-radius: 2px;
+        overflow: hidden;
+    }}
+    .relevance-bar {{
+        height: 100%;
+        border-radius: 2px;
+        transition: width 0.3s ease;
+    }}
+    #sourcesList {{
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
+        gap: 1rem;
+    }}
     </style>
     """
 
@@ -383,17 +478,6 @@ async def ask_ai(q: str = Query(""), provider: str = Query("openai")):
                 </div>
             </div>
 
-            <div class="alert info" style="margin-top: 2rem;">
-                <h3 style="margin: 0 0 0.5rem; color: #58a6ff;">How RAG Works</h3>
-                <ol style="margin: 0.5rem 0; padding-left: 1.5rem;">
-                    <li><strong>Retrieve:</strong> Searches vector database for relevant US Code sections</li>
-                    <li><strong>Augment:</strong> Adds those sections as context to your question</li>
-                    <li><strong>Generate:</strong> AI generates an answer based only on retrieved sections</li>
-                </ol>
-                <p style="margin: 0.5rem 0 0; font-size: 0.9rem; color: #8b949e;">
-                    Answers are grounded in actual law, with citations to specific sections.
-                </p>
-            </div>
         </div>
         """
         content = form_html + examples_html
@@ -401,4 +485,4 @@ async def ask_ai(q: str = Query(""), provider: str = Query("openai")):
         # With a query, just show the form - streaming JS will handle the rest
         content = form_html
 
-    return render_page("Ask AI", content, "home")
+    return render_page("AI Search", content, "home")

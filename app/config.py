@@ -27,9 +27,13 @@ class Settings(BaseSettings):
     vector_db_dir: Optional[Path] = None
 
     # Vector DB settings
-    embedding_model: str = "text-embedding-3-large"
+    # Embedding model options:
+    #   - "text-embedding-3-small": Good quality, 1536 dims, $0.02/1M tokens
+    #   - "text-embedding-3-large": Best quality, 3072 dims, $0.13/1M tokens
+    # NOTE: Must match the model used when creating the database!
+    embedding_model: str = "text-embedding-3-small"
     vector_db_collection: str = "uscode"
-    vector_batch_size: int = 500  # Increased from 100
+    vector_batch_size: int = 100  # Reduced to avoid OpenAI rate limits
 
     # RAG settings
     default_llm_provider: str = "openai"
@@ -74,12 +78,13 @@ class Settings(BaseSettings):
         return bool(self.congress_api_key)
 
     def validate_vector_db(self) -> bool:
-        """Check if vector database exists"""
+        """Check if vector database exists (LanceDB format)"""
         if self.vector_db_dir is None:
             return False
+        # LanceDB stores tables as .lance directories
         return (
             self.vector_db_dir.exists()
-            and (self.vector_db_dir / "chroma.sqlite3").exists()
+            and (self.vector_db_dir / "uscode.lance").exists()
         )
 
     def get_status(self) -> dict:

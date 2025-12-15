@@ -50,12 +50,15 @@ def get_relevant_sections(query: str, n_results: int = 5) -> List[SearchResult]:
         results["metadatas"][0],
         results["distances"][0],
     ):
+        # LanceDB returns L2 distance - convert to relevance score (0-1)
+        # Lower distance = more relevant, so we use 1/(1+distance)
+        relevance = max(0.0, min(1.0, 1.0 / (1.0 + distance)))
         sections.append(
             SearchResult(
                 identifier=meta["identifier"],
                 heading=meta["heading"],
                 text=doc,
-                relevance=1 - distance,
+                relevance=relevance,
             )
         )
 
