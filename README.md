@@ -8,7 +8,7 @@ A comprehensive toolkit for accessing, searching, and analyzing United States fe
 - **🔍 Semantic Search** - Natural language search across all federal law using OpenAI embeddings
 - **🤖 RAG Q&A** - Ask questions about US law and get AI-powered answers with citations
 - **🌐 Web Interface** - Browse and search laws through a FastAPI web application
-- **📜 Founding Documents** - Declaration of Independence, Constitution, and more
+- **📜 Founding Documents** - Read the Declaration of Independence, Constitution, and Bill of Rights (including all Amendments)
 
 ## Quick Start
 

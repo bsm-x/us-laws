@@ -6,10 +6,10 @@ This system creates a vector database of the entire US Code, enabling semantic s
 
 ## Quick Start
 
-### 1. Install ChromaDB
+### 1. Install Dependencies
 
 ```bash
-pip install chromadb
+pip install -r requirements.txt
 ```
 
 ### 2. Create Vector Database
@@ -22,7 +22,7 @@ python scripts/processing/create_vector_db.py
 
 - Parses all US Code XML files (~60,000 sections)
 - Generates embeddings for each section
-- Stores in local ChromaDB database
+- Stores in local LanceDB database
 - Takes 10-30 minutes depending on your computer
 - Requires ~500MB disk space
 

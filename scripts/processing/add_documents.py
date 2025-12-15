@@ -1,5 +1,5 @@
 """
-Add Documents to Vector Database
+Add Documents to Vector Database (LanceDB)
 A reusable script to add text documents from any folder to the vector database.
 
 Usage:
@@ -17,9 +17,11 @@ from pathlib import Path
 from dataclasses import dataclass
 from typing import List, Optional
 import re
+import time
 
-import chromadb
-from chromadb.utils import embedding_functions
+import lancedb
+import openai
+from tqdm import tqdm
 
 # Add project root to path
 PROJECT_ROOT = Path(__file__).parent.parent.parent
@@ -50,7 +52,9 @@ except ImportError:
     DATA_DIR = PROJECT_ROOT / "data"
     VECTOR_DB_DIR = DATA_DIR / "vector_db"
     OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
-    EMBEDDING_MODEL = "text-embedding-3-large"
+    EMBEDDING_MODEL = "text-embedding-3-small"
+
+BATCH_SIZE = 50  # Smaller batches for text documents
 
 
 @dataclass
@@ -140,6 +144,14 @@ def parse_text_file(
     return chunks
 
 
+def get_embeddings(
+    client: openai.OpenAI, texts: list[str], model: str
+) -> list[list[float]]:
+    """Get embeddings for a batch of texts from OpenAI"""
+    response = client.embeddings.create(input=texts, model=model)
+    return [e.embedding for e in response.data]
+
+
 def add_documents_to_vectordb(
     folder_path: Path,
     doc_type: str = "document",
@@ -162,7 +174,7 @@ def add_documents_to_vectordb(
         id_prefix = doc_type.replace(" ", "_").replace("-", "_")
 
     logger.info("=" * 60)
-    logger.info(f"ADDING DOCUMENTS TO VECTOR DATABASE")
+    logger.info("ADDING DOCUMENTS TO VECTOR DATABASE (LanceDB)")
     logger.info(f"Folder: {folder_path}")
     logger.info(f"Document type: {doc_type}")
     logger.info(f"ID prefix: {id_prefix}")
@@ -209,66 +221,79 @@ def add_documents_to_vectordb(
         logger.info("Run create_vector_db.py first")
         return False
 
-    client = chromadb.PersistentClient(path=str(VECTOR_DB_DIR))
-
-    openai_ef = embedding_functions.OpenAIEmbeddingFunction(
-        api_key=OPENAI_API_KEY, model_name=EMBEDDING_MODEL
-    )
+    # Open LanceDB
+    db = lancedb.connect(str(VECTOR_DB_DIR))
 
     try:
-        collection = client.get_collection(name="uscode", embedding_function=openai_ef)
-        current_count = collection.count()
-        logger.info(f"Found existing collection with {current_count} documents")
+        table = db.open_table("uscode")
+        current_count = table.count_rows()
+        logger.info(f"Found existing table with {current_count} documents")
     except Exception as e:
-        logger.error(f"Could not get collection: {e}")
+        logger.error(f"Could not open table 'uscode': {e}")
+        logger.info("Run create_vector_db.py first to create the table")
         return False
 
-    # Check for existing documents with this prefix and remove them
-    existing_ids = [f"{id_prefix}_{i}" for i in range(1000)]  # Check up to 1000
-    try:
-        # Try to delete any existing documents with this prefix
-        collection.delete(where={"document_type": doc_type})
-        logger.info(f"Removed any existing documents of type '{doc_type}'")
-    except Exception:
-        pass  # No existing documents to delete
+    # Initialize OpenAI client
+    openai_client = openai.OpenAI(api_key=OPENAI_API_KEY)
 
-    # Prepare documents
-    documents = []
-    metadatas = []
-    ids = []
-
+    # Prepare documents for embedding
+    texts_to_embed = []
     for chunk in all_chunks:
         doc_text = f"{chunk.identifier}: {chunk.heading}\n\n{chunk.text}"
+        # Truncate if too long
+        if len(doc_text) > 8000:
+            doc_text = doc_text[:8000]
+        texts_to_embed.append(doc_text)
 
-        documents.append(doc_text)
-        metadatas.append(
+    # Get embeddings in batches
+    logger.info(f"Getting embeddings for {len(texts_to_embed)} chunks...")
+    all_embeddings = []
+
+    for i in tqdm(range(0, len(texts_to_embed), BATCH_SIZE), desc="Embedding"):
+        batch_texts = texts_to_embed[i : i + BATCH_SIZE]
+
+        try:
+            embeddings = get_embeddings(openai_client, batch_texts, EMBEDDING_MODEL)
+            all_embeddings.extend(embeddings)
+        except Exception as e:
+            logger.error(f"Error getting embeddings: {e}")
+            return False
+
+        # Rate limiting
+        time.sleep(0.1)
+
+    # Prepare records for LanceDB.
+    # NOTE: Must match the existing table schema. The default US Code table has:
+    #   identifier, heading, title, text, text_length, vector
+    records = []
+    default_title = (
+        "Founding Documents"
+        if doc_type.strip().lower() in {"founding_document", "founding documents"}
+        else doc_type.strip().title()
+    )
+    for chunk, embedding in zip(all_chunks, all_embeddings):
+        records.append(
             {
                 "identifier": chunk.identifier,
                 "heading": chunk.heading,
-                "document_type": chunk.document_type,
-                "source_file": chunk.source_file,
+                "title": default_title,
+                # Store the raw chunk text for display; embeddings were computed from
+                # identifier/heading + text for better retrieval.
+                "text": chunk.text,
                 "text_length": len(chunk.text),
+                "vector": embedding,
             }
         )
-        ids.append(chunk.id)
 
-    # Add to collection in batches
-    batch_size = 100
-    for i in range(0, len(documents), batch_size):
-        batch_end = min(i + batch_size, len(documents))
-        logger.info(f"Adding batch {i//batch_size + 1}: documents {i+1} to {batch_end}")
+    # Add to table
+    logger.info(f"Adding {len(records)} records to database...")
+    try:
+        table.add(records)
+    except Exception as e:
+        logger.error(f"Error adding records: {e}")
+        return False
 
-        try:
-            collection.add(
-                documents=documents[i:batch_end],
-                metadatas=metadatas[i:batch_end],
-                ids=ids[i:batch_end],
-            )
-        except Exception as e:
-            logger.error(f"Error adding batch: {e}")
-            return False
-
-    new_count = collection.count()
+    new_count = table.count_rows()
     logger.info("=" * 60)
     logger.info("DOCUMENTS ADDED SUCCESSFULLY")
     logger.info("=" * 60)

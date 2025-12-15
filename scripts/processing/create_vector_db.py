@@ -159,8 +159,6 @@ def create_vector_database():
         print("\nERROR: OPENAI_API_KEY not found in .env file!")
         return False
 
-    print(f"\nAPI Key found: {OPENAI_API_KEY[:20]}...")
-
     # Initialize OpenAI client
     oai_client = openai.OpenAI(api_key=OPENAI_API_KEY)
 

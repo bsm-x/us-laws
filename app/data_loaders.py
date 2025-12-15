@@ -13,26 +13,8 @@ from app.config import get_settings
 settings = get_settings()
 
 # Cache for loaded data
-_laws_cache: Optional[List[Dict[str, Any]]] = None
 _titles_cache: Optional[List[Dict[str, Any]]] = None
 _uscode_cache: Dict[str, Any] = {}
-
-
-def load_laws() -> List[Dict[str, Any]]:
-    """Load public laws from CSV with caching"""
-    global _laws_cache
-    if _laws_cache is not None:
-        return _laws_cache
-
-    laws = []
-    csv_path = settings.data_dir / "us_public_laws.csv" if settings.data_dir else None
-    if csv_path and csv_path.exists():
-        with open(csv_path, "r", encoding="utf-8") as f:
-            reader = csv.DictReader(f)
-            for row in reader:
-                laws.append(row)
-    _laws_cache = laws
-    return laws
 
 
 def load_titles() -> List[Dict[str, Any]]:
@@ -64,7 +46,6 @@ def set_cached_uscode(title_num: int, data: Any) -> None:
 
 def clear_cache() -> None:
     """Clear all cached data"""
-    global _laws_cache, _titles_cache, _uscode_cache
-    _laws_cache = None
+    global _titles_cache, _uscode_cache
     _titles_cache = None
     _uscode_cache = {}

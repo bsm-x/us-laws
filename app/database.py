@@ -85,15 +85,27 @@ class VectorDBClient:
 
         return self._table
 
-    def search(self, query: str, n_results: int = 10) -> dict:
-        """Search the vector database - returns ChromaDB-compatible format"""
+    def search(
+        self, query: str, n_results: int = 10, where: Optional[str] = None
+    ) -> dict:
+        """Search the vector database - returns ChromaDB-compatible format
+
+        Args:
+            query: Natural language query.
+            n_results: Number of results to return.
+            where: Optional LanceDB filter expression, e.g. "title = 'Founding Documents'".
+        """
         table = self.get_table()
 
         # Get query embedding
         query_embedding = self._get_embedding(query)
 
         # Search LanceDB
-        results = table.search(query_embedding).limit(n_results).to_list()
+        search_query = table.search(query_embedding)
+        if where:
+            search_query = search_query.where(where)
+
+        results = search_query.limit(n_results).to_list()
 
         # Convert to ChromaDB-compatible format for backwards compatibility
         documents = []

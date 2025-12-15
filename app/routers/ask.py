@@ -2,6 +2,7 @@
 Ask AI (RAG) router - Home page with streaming support
 """
 
+import html
 import json
 import asyncio
 from concurrent.futures import ThreadPoolExecutor
@@ -36,24 +37,26 @@ async def stream_answer(q: str = Query(...), provider: str = Query("openai")):
         try:
             # First, retrieve sections (run in thread pool)
             loop = asyncio.get_event_loop()
-            sections = await loop.run_in_executor(
-                executor, lambda: get_relevant_sections(q, n_results=5)
+            uscode_sections = await loop.run_in_executor(
+                executor,
+                lambda: get_relevant_sections(q, n_results=6),
             )
 
-            if not sections:
-                yield f"data: {json.dumps({'type': 'error', 'content': 'No relevant sections found.'})}\n\n"
-                return
-
             # Send sections metadata first
-            sections_data = [
+            uscode_data = [
                 {
                     "identifier": s.identifier,
                     "heading": s.heading,
                     "relevance": s.relevance,
                 }
-                for s in sections
+                for s in uscode_sections
             ]
-            yield f"data: {json.dumps({'type': 'sections', 'content': sections_data})}\n\n"
+
+            yield f"data: {json.dumps({'type': 'uscode_sections', 'content': uscode_data})}\n\n"
+
+            if not uscode_sections:
+                yield f"data: {json.dumps({'type': 'error', 'content': 'No relevant US Code sections found.'})}\n\n"
+                return
 
             # Stream the answer
             model_name = "Claude Sonnet 4" if provider == "anthropic" else "GPT-4o"
@@ -67,9 +70,9 @@ async def stream_answer(q: str = Query(...), provider: str = Query("openai")):
             def run_stream():
                 try:
                     if provider == "anthropic":
-                        stream = stream_with_anthropic(q, sections)
+                        stream = stream_with_anthropic(q, uscode_sections)
                     else:
-                        stream = stream_with_openai(q, sections)
+                        stream = stream_with_openai(q, uscode_sections)
                     for chunk in stream:
                         chunk_queue.put(chunk)
                 except Exception as e:
@@ -124,6 +127,7 @@ async def ask_ai(q: str = Query(""), provider: str = Query("anthropic")):
         return render_page("AI Search", content, "home")
 
     # Form HTML with streaming JavaScript
+    q_safe = html.escape(q or "", quote=True)
     form_html = f"""
     <div style="display: flex; align-items: center; gap: 1rem; margin-bottom: 1rem;">
         <h1 style="margin: 0; display: flex; align-items: center; gap: 0.5rem;">
@@ -131,10 +135,11 @@ async def ask_ai(q: str = Query(""), provider: str = Query("anthropic")):
             Search the US Code
         </h1>
     </div>
+
     <p style="color: #8b949e; margin-bottom: 2rem;">Ask natural language questions and get AI-generated answers based on actual US Code sections.</p>
 
     <form id="askForm" class="search-box" style="margin: 2rem 0;">
-        <input type="text" id="questionInput" name="q" placeholder="e.g., 'How long does copyright protection last?'" value="{q}" style="flex: 1;" autofocus>
+        <input type="text" id="questionInput" name="q" placeholder="e.g., 'How long does copyright protection last?'" value="{q_safe}" style="flex: 1;" autofocus>
         <select id="providerSelect" name="provider">
             <option value="anthropic" {"selected" if provider == "anthropic" else ""}>Claude</option>
             <option value="openai" {"selected" if provider == "openai" else ""}>GPT-4</option>
@@ -144,17 +149,21 @@ async def ask_ai(q: str = Query(""), provider: str = Query("anthropic")):
 
     <div id="resultContainer"></div>
 
-    <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
-    <script>
-    // Configure marked for safe rendering
-    marked.setOptions({{
-        breaks: true,
-        gfm: true
-    }});
+    <script src="https://cdn.jsdelivr.net/npm/marked@4.3.0/marked.min.js"></script>
 
+    <script>
     const form = document.getElementById('askForm');
     const resultContainer = document.getElementById('resultContainer');
     const askButton = document.getElementById('askButton');
+
+    function escapeHtml(value) {{
+        return String(value)
+            .replace(/&/g, '&amp;')
+            .replace(/</g, '&lt;')
+            .replace(/>/g, '&gt;')
+            .replace(/"/g, '&quot;')
+            .replace(/'/g, '&#39;');
+    }}
 
     // Check if there's a query on page load
     const urlParams = new URLSearchParams(window.location.search);
@@ -192,11 +201,17 @@ async def ask_ai(q: str = Query(""), provider: str = Query("anthropic")):
                 <div id="answerContent" style="line-height: 1.8; padding: 1rem; background: #21262d; border-radius: 6px; min-height: 100px;">
                     <span style="color: #8b949e;">Searching relevant sections...</span>
                 </div>
-                <div id="sourcesContainer" style="display: none;">
-                    <h3 style="margin: 2rem 0 1rem; display: flex; align-items: center; gap: 0.5rem; color: #f0f6fc;">
-                        <span class="material-icons" style="color: #58a6ff;">source</span> <span id="sourcesTitle">Sources</span>
-                    </h3>
-                    <div id="sourcesList"></div>
+
+                <div id="sourcesGrid" style="display: none; margin-top: 2rem;">
+                    <div class="sources-grid">
+                        <div>
+                            <h3 style="margin: 0 0 1rem; display: flex; align-items: center; gap: 0.5rem; color: #f0f6fc;">
+                                <span class="material-icons" style="color: #58a6ff;">source</span>
+                                <span id="sourcesTitle">Sources</span>
+                            </h3>
+                            <div id="sourcesList"></div>
+                        </div>
+                    </div>
                 </div>
             </div>
         `;
@@ -221,17 +236,20 @@ async def ask_ai(q: str = Query(""), provider: str = Query("anthropic")):
                         try {{
                             const data = JSON.parse(line.slice(6));
 
-                            if (data.type === 'sections') {{
-                                const sourcesContainer = document.getElementById('sourcesContainer');
+                            if (data.type === 'uscode_sections') {{
+                                const sourcesGrid = document.getElementById('sourcesGrid');
                                 const sourcesList = document.getElementById('sourcesList');
                                 const sourcesTitle = document.getElementById('sourcesTitle');
 
-                                sourcesContainer.style.display = 'block';
-                                sourcesTitle.textContent = `Sources (${{data.content.length}} sections)`;
+                                sourcesGrid.style.display = 'block';
+                                sourcesTitle.textContent = `US Code Sources (${{data.content.length}} sections)`;
 
                                 sourcesList.innerHTML = data.content.map(s => {{
                                     // Parse identifier like "/us/usc/t29/s206" to get title and section
                                     const identMatch = s.identifier.match(/\\/us\\/usc\\/t(\\d+)\\/s(.+)$/);
+                                    // Also match "Title 42 “SEC. 221." -> Title 42, Section 221
+                                    const titleMatch = s.identifier.match(/Title\\s+(\\d+).*SEC\\.\\s*(\\d+)/i);
+
                                     let uscLink = '';
                                     let displayName = s.identifier;
 
@@ -240,6 +258,20 @@ async def ask_ai(q: str = Query(""), provider: str = Query("anthropic")):
                                         const sectionNum = identMatch[2];
                                         uscLink = `https://uscode.house.gov/view.xhtml?req=granuleid:USC-prelim-title${{titleNum}}-section${{sectionNum}}&edition=prelim`;
                                         displayName = `USC Title ${{titleNum}} Section ${{sectionNum}}`;
+                                    }} else if (titleMatch) {{
+                                        const titleNum = titleMatch[1];
+                                        const sectionNum = titleMatch[2];
+                                        uscLink = `https://uscode.house.gov/view.xhtml?req=granuleid:USC-prelim-title${{titleNum}}-section${{sectionNum}}&edition=prelim`;
+                                        displayName = `USC Title ${{titleNum}} Section ${{sectionNum}}`;
+                                    }} else {{
+                                        // Check if it's a founding document
+                                        // Simple heuristic: if it's not a path-like string, assume it's a doc title
+                                        if (!s.identifier.includes('/')) {{
+                                            // Convert "Northwest Ordinance - Article 6" to "northwest_ordinance"
+                                            const docName = s.identifier.split(' - ')[0].toLowerCase().replace(/ /g, '_');
+                                            uscLink = `/founding-docs/${{docName}}`;
+                                            displayName = s.identifier;
+                                        }}
                                     }}
 
                                     // Calculate relevance bar width and color
@@ -262,7 +294,7 @@ async def ask_ai(q: str = Query(""), provider: str = Query("anthropic")):
                                                     ${{relevancePercent}}% match
                                                 </div>
                                             </div>
-                                            <div class="source-heading">${{s.heading}}</div>
+                                            <div class="source-heading">${{escapeHtml(s.heading)}}</div>
                                             <div class="relevance-bar-container">
                                                 <div class="relevance-bar" style="width: ${{relevancePercent}}%; background: ${{relevanceColor}};"></div>
                                             </div>
@@ -272,6 +304,7 @@ async def ask_ai(q: str = Query(""), provider: str = Query("anthropic")):
 
                                 answerContent.innerHTML = '<span style="color: #8b949e;">Generating answer...</span>';
                             }}
+
 
                             if (data.type === 'model') {{
                                 document.getElementById('modelBadge').textContent = data.content;
@@ -311,7 +344,11 @@ async def ask_ai(q: str = Query(""), provider: str = Query("anthropic")):
     function formatMarkdown(text) {{
         // Use marked library for proper markdown rendering
         try {{
-            return marked.parse(text);
+            if (typeof marked !== 'undefined' && marked && typeof marked.parse === 'function') {{
+                marked.setOptions({{ gfm: true, breaks: true }});
+                return marked.parse(text);
+            }}
+            throw new Error('marked not available');
         }} catch (e) {{
             // Fallback to basic formatting
             return text
@@ -432,7 +469,24 @@ async def ask_ai(q: str = Query(""), provider: str = Query("anthropic")):
     }}
     #sourcesList {{
         display: grid;
-        grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
+        grid-template-columns: 1fr 1fr;
+        gap: 1rem;
+    }}
+
+    .sources-grid {{
+        display: grid;
+        grid-template-columns: 1fr;
+        gap: 1rem;
+        align-items: start;
+    }}
+    @media (max-width: 1000px) {{
+        #sourcesList {{
+            grid-template-columns: 1fr;
+        }}
+    }}
+    #foundingList {{
+        display: grid;
+        grid-template-columns: 1fr;
         gap: 1rem;
     }}
     </style>

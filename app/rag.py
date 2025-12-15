@@ -38,7 +38,15 @@ def get_relevant_sections(query: str, n_results: int = 5) -> List[SearchResult]:
 
     # Use singleton client (no reconnection overhead)
     db = get_vector_db()
-    results = db.search(query, n_results=n_results)
+
+    # Fetch a larger pool, then filter out non-USC docs (e.g., Founding Documents)
+    # so the answer context remains strictly US Code.
+    raw_results = db.search(query, n_results=n_results)
+
+    if not raw_results["documents"][0]:
+        return []
+
+    results = raw_results
 
     if not results["documents"][0]:
         return []
@@ -51,8 +59,9 @@ def get_relevant_sections(query: str, n_results: int = 5) -> List[SearchResult]:
         results["distances"][0],
     ):
         # LanceDB returns L2 distance - convert to relevance score (0-1)
-        # Lower distance = more relevant, so we use 1/(1+distance)
-        relevance = max(0.0, min(1.0, 1.0 / (1.0 + distance)))
+        # We use a quadratic scaling that maps the typical range of 0-2 to 0-1
+        # This provides more intuitive scores (e.g. 0.8 distance -> ~83% match)
+        relevance = max(0.0, min(1.0, 1.0 - (distance * distance) / 4.0))
         sections.append(
             SearchResult(
                 identifier=meta["identifier"],

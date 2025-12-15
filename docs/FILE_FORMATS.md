@@ -170,7 +170,7 @@ Current features:
 To add:
 
 - [ ] Full-text search across all titles
-- [ ] Founding documents pages
+- [x] Founding documents pages
 - [ ] Links between laws and code sections
 - [ ] Download/export sections as PDF
 - [ ] Historical versions (prior release points)
@@ -179,14 +179,17 @@ To add:
 
 ## 📖 Founding Documents
 
-These need manual addition (not in XML format):
+Founding documents are stored as text files in `data/founding_documents/`.
 
-- **Constitution**: https://www.archives.gov/founding-docs/constitution-transcript
-- **Declaration**: https://www.archives.gov/founding-docs/declaration-transcript
-- **Articles of Confederation**: https://www.archives.gov/founding-docs/articles-of-confederation-transcript
-- **Northwest Ordinance**: https://avalon.law.yale.edu/18th_century/nworder.asp
+Included documents:
 
-Copy the text and save in `data/founding_documents/` for display.
+- **Declaration of Independence** (1776)
+- **Articles of Confederation** (1777)
+- **Northwest Ordinance** (1787)
+- **Constitution** (1787)
+- **Bill of Rights** (1791) - Includes all 27 Amendments
+
+These are fetched automatically using `scripts/download/fetch_founding_docs.py`.
 
 ---
 

@@ -15,8 +15,7 @@ Architecture:
 - models.py: Pydantic models
 - rag.py: RAG pipeline
 - routers/: Route handlers
-    - ask.py: Home page - AI Q&A (RAG)
-    - laws.py: Public laws browser
+    - ask.py: Home page - AI Search
     - code.py: US Code browser
 """
 
@@ -31,6 +30,7 @@ from app.models import HealthResponse
 from app.routers import (
     code_router,
     ask_router,
+    founding_docs_router,
 )
 
 # Setup logging
@@ -95,6 +95,7 @@ app = FastAPI(
 # Include routers
 app.include_router(ask_router)  # Home page (AI Search at /)
 app.include_router(code_router)
+app.include_router(founding_docs_router)
 
 
 @app.get("/api/health", response_model=HealthResponse)

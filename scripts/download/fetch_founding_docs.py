@@ -4,7 +4,11 @@ Downloads and saves founding documents to data/founding_documents/
 """
 
 import sys
+import html
+import re
 from pathlib import Path
+
+import requests
 
 PROJECT_ROOT = Path(__file__).parent.parent.parent
 sys.path.insert(0, str(PROJECT_ROOT))
@@ -16,6 +20,67 @@ FOUNDING_DOCS_DIR = DATA_DIR / "founding_documents"
 # ============================================================================
 # FOUNDING DOCUMENT TEXTS
 # ============================================================================
+
+ARTICLES_OF_CONFEDERATION_URL = "https://avalon.law.yale.edu/18th_century/artconf.asp"
+NORTHWEST_ORDINANCE_URL = "https://avalon.law.yale.edu/18th_century/nworder.asp"
+
+
+def _html_to_text(html_content: str) -> str:
+    # Strip scripts/styles and turn common block boundaries into newlines.
+    html_content = re.sub(
+        r"<script\b[^>]*>.*?</script>",
+        "",
+        html_content,
+        flags=re.IGNORECASE | re.DOTALL,
+    )
+    html_content = re.sub(
+        r"<style\b[^>]*>.*?</style>", "", html_content, flags=re.IGNORECASE | re.DOTALL
+    )
+
+    html_content = re.sub(r"<br\s*/?>", "\n", html_content, flags=re.IGNORECASE)
+    html_content = re.sub(
+        r"</(p|div|h[1-6]|li|tr|table|pre)>", "\n", html_content, flags=re.IGNORECASE
+    )
+
+    # Remove all remaining tags.
+    text = re.sub(r"<[^>]+>", "", html_content)
+    text = html.unescape(text)
+
+    # Normalize whitespace.
+    text = text.replace("\r\n", "\n").replace("\r", "\n")
+    text = re.sub(r"[\t\x0b\x0c]", " ", text)
+    text = re.sub(r"[ ]{2,}", " ", text)
+    text = re.sub(r"\n{3,}", "\n\n", text)
+    return text.strip()
+
+
+def _fetch_avalon_document(url: str, start_markers: list[str]) -> str:
+    resp = requests.get(
+        url,
+        headers={"User-Agent": "us-laws-fetch-founding-docs/1.0"},
+        timeout=30,
+    )
+    resp.raise_for_status()
+    text = _html_to_text(resp.text)
+
+    start_index = None
+    for marker in start_markers:
+        idx = text.find(marker)
+        if idx != -1:
+            start_index = idx
+            break
+    if start_index is not None:
+        text = text[start_index:]
+
+    # Trim off Avalon navigation/footer if present.
+    for end_marker in ["Source:", "©", "Avalon Home", "Search Avalon"]:
+        if end_marker in text:
+            text = text.split(end_marker, 1)[0].rstrip()
+            break
+
+    text = re.sub(r"\n{3,}", "\n\n", text).strip()
+    return text
+
 
 DECLARATION_OF_INDEPENDENCE = """In Congress, July 4, 1776
 
@@ -245,6 +310,26 @@ The right of citizens of the United States to vote shall not be denied or abridg
 Congress shall have power to enforce this article by appropriate legislation."""
 
 
+def get_articles_of_confederation() -> str:
+    return _fetch_avalon_document(
+        ARTICLES_OF_CONFEDERATION_URL,
+        start_markers=[
+            "To all to whom these Presents shall come",
+            "Articles of Confederation and perpetual Union",
+        ],
+    )
+
+
+def get_northwest_ordinance() -> str:
+    return _fetch_avalon_document(
+        NORTHWEST_ORDINANCE_URL,
+        start_markers=[
+            "An Ordinance for the government of the Territory of the United States northwest of the River Ohio",
+            "Section 1.",
+        ],
+    )
+
+
 def save_founding_documents():
     """Save founding documents to the data folder"""
     FOUNDING_DOCS_DIR.mkdir(parents=True, exist_ok=True)
@@ -254,6 +339,8 @@ def save_founding_documents():
         "constitution.txt": CONSTITUTION,
         "bill_of_rights.txt": BILL_OF_RIGHTS,
         "later_amendments.txt": LATER_AMENDMENTS,
+        "articles_of_confederation.txt": get_articles_of_confederation(),
+        "northwest_ordinance.txt": get_northwest_ordinance(),
     }
 
     print("📜 Saving Founding Documents")
