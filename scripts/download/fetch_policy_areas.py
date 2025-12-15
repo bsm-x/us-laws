@@ -8,17 +8,24 @@ import csv
 import json
 import requests
 import time
+from pathlib import Path
 from dotenv import load_dotenv
 
 load_dotenv()
+
+# Directories
+PROJECT_ROOT = Path(__file__).parent.parent.parent
+DATA_DIR = PROJECT_ROOT / "data"
 
 API_KEY = os.getenv("CONGRESS_API_KEY")
 BASE_URL = "https://api.congress.gov/v3"
 
 
 # Load existing laws
-def load_existing_laws(filename="us_public_laws.csv"):
+def load_existing_laws(filename=None):
     """Load laws from CSV to get bill numbers"""
+    if filename is None:
+        filename = DATA_DIR / "us_public_laws.csv"
     laws = []
     with open(filename, "r", encoding="utf-8") as f:
         reader = csv.DictReader(f)

@@ -7,16 +7,22 @@ import chromadb
 from chromadb.utils import embedding_functions
 from pathlib import Path
 from tqdm import tqdm
-from parse_uscode import parse_uscode_xml
 import time
 import os
+import sys
 from dotenv import load_dotenv
+
+# Add project root to path
+PROJECT_ROOT = Path(__file__).parent.parent.parent
+sys.path.insert(0, str(PROJECT_ROOT))
+
+from scripts.processing.parse_uscode import parse_uscode_xml
 
 # Load environment variables
 load_dotenv()
 
 # Directories
-DATA_DIR = Path(__file__).parent / "data"
+DATA_DIR = PROJECT_ROOT / "data"
 USCODE_DIR = DATA_DIR / "uscode"
 VECTOR_DB_DIR = DATA_DIR / "vector_db"
 

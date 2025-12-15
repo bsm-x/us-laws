@@ -1,0 +1,21 @@
+# Web Framework
+fastapi>=0.104.0
+uvicorn>=0.24.0
+
+# HTTP Requests
+requests>=2.31.0
+
+# Vector Database
+chromadb>=0.4.0
+
+# OpenAI
+openai>=1.0.0
+
+# Environment Variables
+python-dotenv>=1.0.0
+
+# Progress Bars
+tqdm>=4.66.0
+
+# Markdown Rendering
+markdown>=3.5.0

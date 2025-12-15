@@ -15,7 +15,8 @@ USCODE_BASE = "https://uscode.house.gov/download/releasepoints/us/pl/119/46"
 FOUNDING_DOCS_BASE = "https://www.archives.gov"
 
 # Directories
-DATA_DIR = Path(__file__).parent / "data"
+PROJECT_ROOT = Path(__file__).parent.parent.parent
+DATA_DIR = PROJECT_ROOT / "data"
 USCODE_DIR = DATA_DIR / "uscode"
 FOUNDING_DIR = DATA_DIR / "founding_documents"
 

@@ -7,8 +7,12 @@ import chromadb
 from pathlib import Path
 import sys
 
+# Add project root to path
+PROJECT_ROOT = Path(__file__).parent.parent.parent
+sys.path.insert(0, str(PROJECT_ROOT))
+
 # Directories
-DATA_DIR = Path(__file__).parent / "data"
+DATA_DIR = PROJECT_ROOT / "data"
 VECTOR_DB_DIR = DATA_DIR / "vector_db"
 
 

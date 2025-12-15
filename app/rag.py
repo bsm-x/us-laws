@@ -13,7 +13,8 @@ from dotenv import load_dotenv
 load_dotenv()
 
 # Directories
-DATA_DIR = Path(__file__).parent / "data"
+PROJECT_ROOT = Path(__file__).parent.parent
+DATA_DIR = PROJECT_ROOT / "data"
 VECTOR_DB_DIR = DATA_DIR / "vector_db"
 
 

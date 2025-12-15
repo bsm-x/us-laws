@@ -1,19 +1,29 @@
 """
 Simple web viewer for US Laws and Code
-Run with: python app.py
+Run with: python -m app.main
 Then visit: http://localhost:8000
 """
 
 import csv
 import os
+import sys
 from pathlib import Path
 from fastapi import FastAPI, Request, Query
 from fastapi.responses import HTMLResponse
 from fastapi.staticfiles import StaticFiles
 import uvicorn
-from parse_uscode import parse_uscode_xml, search_sections, get_title_structure
 from dotenv import load_dotenv
 import markdown
+
+# Add project root to path for imports
+PROJECT_ROOT = Path(__file__).parent.parent
+sys.path.insert(0, str(PROJECT_ROOT))
+
+from scripts.processing.parse_uscode import (
+    parse_uscode_xml,
+    search_sections,
+    get_title_structure,
+)
 
 # Load environment variables
 load_dotenv()
@@ -21,9 +31,9 @@ load_dotenv()
 app = FastAPI(title="US Laws Viewer")
 
 # Data directory
-DATA_DIR = Path(__file__).parent
-USCODE_DIR = DATA_DIR / "data" / "uscode"
-VECTOR_DB_DIR = DATA_DIR / "data" / "vector_db"
+DATA_DIR = PROJECT_ROOT / "data"
+USCODE_DIR = DATA_DIR / "uscode"
+VECTOR_DB_DIR = DATA_DIR / "vector_db"
 
 # Vector database client (lazy loaded)
 _vector_client = None

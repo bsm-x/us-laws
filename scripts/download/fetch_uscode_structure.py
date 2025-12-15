@@ -11,6 +11,10 @@ import os
 import xml.etree.ElementTree as ET
 from pathlib import Path
 
+# Directories
+PROJECT_ROOT = Path(__file__).parent.parent.parent
+DATA_DIR = PROJECT_ROOT / "data"
+
 # US Code Title Information (54 titles)
 US_CODE_TITLES = [
     {"number": 1, "name": "General Provisions", "enacted": True},
@@ -86,8 +90,10 @@ US_CODE_TITLES = [
 ]
 
 
-def save_titles_to_csv(filename="us_code_titles.csv"):
+def save_titles_to_csv(filename=None):
     """Save basic title information to CSV"""
+    if filename is None:
+        filename = DATA_DIR / "us_code_titles.csv"
     with open(filename, "w", newline="", encoding="utf-8") as f:
         writer = csv.writer(f)
         writer.writerow(["Title Number", "Title Name", "Enacted as Positive Law"])

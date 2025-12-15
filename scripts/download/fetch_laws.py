@@ -7,11 +7,16 @@ import os
 import requests
 import csv
 import time
+from pathlib import Path
 from datetime import datetime
 from dotenv import load_dotenv
 
 # Load environment variables from .env file
 load_dotenv()
+
+# Directories
+PROJECT_ROOT = Path(__file__).parent.parent.parent
+DATA_DIR = PROJECT_ROOT / "data"
 
 API_KEY = os.getenv("CONGRESS_API_KEY")
 BASE_URL = "https://api.congress.gov/v3"
@@ -78,8 +83,10 @@ def fetch_all_laws(start_congress: int = 82, end_congress: int = 118) -> list:
     return all_laws
 
 
-def save_to_csv(laws: list, filename: str = "us_public_laws.csv"):
+def save_to_csv(laws: list, filename=None):
     """Save laws to CSV file"""
+    if filename is None:
+        filename = DATA_DIR / "us_public_laws.csv"
     with open(filename, "w", newline="", encoding="utf-8") as f:
         writer = csv.writer(f)
         writer.writerow(
