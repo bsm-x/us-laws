@@ -42,12 +42,13 @@ async def stream_answer(q: str = Query(...), provider: str = Query("openai")):
                 lambda: get_relevant_sections(q, n_results=6),
             )
 
-            # Send sections metadata first
+            # Send sections metadata first (include text for citation popups)
             uscode_data = [
                 {
                     "identifier": s.identifier,
                     "heading": s.heading,
                     "relevance": s.relevance,
+                    "text": s.text[:1500],  # Include text for citation popups
                 }
                 for s in uscode_sections
             ]
@@ -237,6 +238,9 @@ async def ask_ai(q: str = Query(""), provider: str = Query("anthropic")):
                             const data = JSON.parse(line.slice(6));
 
                             if (data.type === 'uscode_sections') {{
+                                // Store sources for citation popups
+                                citationSources = data.content;
+
                                 const sourcesGrid = document.getElementById('sourcesGrid');
                                 const sourcesList = document.getElementById('sourcesList');
                                 const sourcesTitle = document.getElementById('sourcesTitle');
@@ -244,7 +248,8 @@ async def ask_ai(q: str = Query(""), provider: str = Query("anthropic")):
                                 sourcesGrid.style.display = 'block';
                                 sourcesTitle.textContent = `US Code Sources (${{data.content.length}} sections)`;
 
-                                sourcesList.innerHTML = data.content.map(s => {{
+                                sourcesList.innerHTML = data.content.map((s, index) => {{
+                                    const sourceNum = index + 1;  // For citation markers [1], [2], etc.
                                     // Parse identifier like "/us/usc/t29/s206" to get title and section
                                     const identMatch = s.identifier.match(/\\/us\\/usc\\/t(\\d+)\\/s(.+)$/);
                                     // Also match "Title 42 “SEC. 221." -> Title 42, Section 221
@@ -279,11 +284,12 @@ async def ask_ai(q: str = Query(""), provider: str = Query("anthropic")):
                                     const relevanceColor = relevancePercent >= 70 ? '#238636' : relevancePercent >= 40 ? '#f0883e' : '#8b949e';
 
                                     return `
-                                        <div class="source-card">
+                                        <div class="source-card" onclick="showCitation(${{sourceNum}})" style="cursor: pointer;">
                                             <div class="source-header">
                                                 <div class="source-title-section">
+                                                    <span class="source-number-badge" title="Click to view source text">[<span>${{sourceNum}}</span>]</span>
                                                     ${{uscLink
-                                                        ? `<a href="${{uscLink}}" target="_blank" rel="noopener noreferrer" class="source-link">
+                                                        ? `<a href="${{uscLink}}" target="_blank" rel="noopener noreferrer" class="source-link" onclick="event.stopPropagation();">
                                                                <span class="material-icons" style="font-size: 1rem; vertical-align: middle;">open_in_new</span>
                                                                ${{displayName}}
                                                            </a>`
@@ -346,17 +352,89 @@ async def ask_ai(q: str = Query(""), provider: str = Query("anthropic")):
         try {{
             if (typeof marked !== 'undefined' && marked && typeof marked.parse === 'function') {{
                 marked.setOptions({{ gfm: true, breaks: true }});
-                return marked.parse(text);
+                let html = marked.parse(text);
+                // Convert citation markers [1], [2], etc. to clickable elements
+                html = addCitationLinks(html);
+                return html;
             }}
             throw new Error('marked not available');
         }} catch (e) {{
             // Fallback to basic formatting
-            return text
+            let html = text
                 .replace(/\\n\\n/g, '</p><p>')
                 .replace(/\\n/g, '<br>')
                 .replace(/^/, '<p>')
                 .replace(/$/, '</p>');
+            // Convert citation markers
+            html = addCitationLinks(html);
+            return html;
         }}
+    }}
+
+    function addCitationLinks(html) {{
+        // Convert [1], [2], etc. to clickable citation markers
+        return html.replace(/\\[(\\d+)\\]/g, function(match, num) {{
+            return '<span class="citation-marker" data-citation="' + num + '" onclick="showCitation(' + num + ')">[<span>' + num + '</span>]</span>';
+        }});
+    }}
+
+    // Store sources globally for citation popups
+    let citationSources = [];
+
+    function showCitation(num) {{
+        const source = citationSources[num - 1];
+        if (!source) return;
+
+        // Remove any existing popup
+        const existing = document.querySelector('.citation-popup');
+        if (existing) existing.remove();
+
+        // Parse identifier to get title and section for display and link
+        let displayTitle = source.identifier;
+        let uscLink = '';
+        const identMatch = source.identifier.match(/\\/us\\/usc\\/t(\\d+)\\/s(.+)$/);
+        if (identMatch) {{
+            const titleNum = identMatch[1];
+            const sectionNum = identMatch[2];
+            displayTitle = 'Title ' + titleNum + ' Section ' + sectionNum;
+            uscLink = 'https://uscode.house.gov/view.xhtml?req=granuleid:USC-prelim-title' + titleNum + '-section' + sectionNum + '&edition=prelim';
+        }}
+
+        // Create popup
+        const popup = document.createElement('div');
+        popup.className = 'citation-popup';
+        const headerContent = uscLink
+            ? '<a href="' + uscLink + '" target="_blank" rel="noopener noreferrer" style="color: #58a6ff; text-decoration: none;">[' + num + '] ' + escapeHtml(displayTitle) + ' <span class="material-icons" style="font-size: 0.9rem; vertical-align: middle;">open_in_new</span></a>'
+            : '<span>[' + num + '] ' + escapeHtml(displayTitle) + '</span>';
+        popup.innerHTML = `
+            <div class=\"citation-popup-header\">
+                <strong>${{headerContent}}</strong>
+                <button onclick=\"this.parentElement.parentElement.remove()\" class=\"citation-close\">&times;</button>
+            </div>
+            <div class=\"citation-popup-title\">${{escapeHtml(source.heading)}}</div>
+            <div class=\"citation-popup-text\">${{escapeHtml(source.text.substring(0, 800))}}</div>
+            <div class=\"citation-popup-relevance\">
+                <span style=\"color: #8b949e;\">Relevance:</span>
+                <span style=\"color: #58a6ff; font-weight: bold;\">${{Math.round(source.relevance * 100)}}%</span>
+            </div>
+        `;
+
+        document.body.appendChild(popup);
+
+        // Position near center of screen
+        popup.style.top = '50%';
+        popup.style.left = '50%';
+        popup.style.transform = 'translate(-50%, -50%)';
+
+        // Close on outside click
+        setTimeout(() => {{
+            document.addEventListener('click', function closePopup(e) {{
+                if (!popup.contains(e.target) && !e.target.classList.contains('citation-marker')) {{
+                    popup.remove();
+                    document.removeEventListener('click', closePopup);
+                }}
+            }});
+        }}, 100);
     }}
     </script>
 
@@ -365,6 +443,90 @@ async def ask_ai(q: str = Query(""), provider: str = Query("anthropic")):
         from {{ transform: rotate(0deg); }}
         to {{ transform: rotate(360deg); }}
     }}
+
+    /* Citation Markers */
+    .citation-marker {{
+        display: inline;
+        color: #58a6ff;
+        cursor: pointer;
+        font-weight: 600;
+        background: rgba(88, 166, 255, 0.15);
+        padding: 0 0.2rem;
+        border-radius: 3px;
+        transition: all 0.2s;
+        font-size: 0.85em;
+        vertical-align: super;
+    }}
+    .citation-marker:hover {{
+        background: rgba(88, 166, 255, 0.3);
+        color: #79c0ff;
+    }}
+    .citation-marker span {{
+        text-decoration: underline;
+    }}
+
+    /* Citation Popup */
+    .citation-popup {{
+        position: fixed;
+        z-index: 10000;
+        background: #161b22;
+        border: 1px solid #30363d;
+        border-radius: 12px;
+        box-shadow: 0 8px 32px rgba(0, 0, 0, 0.5);
+        max-width: 550px;
+        width: 90%;
+        max-height: 80vh;
+        overflow: hidden;
+        animation: popupFadeIn 0.2s ease;
+    }}
+    @keyframes popupFadeIn {{
+        from {{ opacity: 0; transform: translate(-50%, -50%) scale(0.95); }}
+        to {{ opacity: 1; transform: translate(-50%, -50%) scale(1); }}
+    }}
+    .citation-popup-header {{
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        padding: 1rem 1.25rem;
+        background: #21262d;
+        border-bottom: 1px solid #30363d;
+        color: #58a6ff;
+        font-size: 0.95rem;
+    }}
+    .citation-close {{
+        background: none;
+        border: none;
+        color: #8b949e;
+        font-size: 1.5rem;
+        cursor: pointer;
+        padding: 0 0.25rem;
+        line-height: 1;
+    }}
+    .citation-close:hover {{
+        color: #f08080;
+    }}
+    .citation-popup-title {{
+        padding: 0.75rem 1.25rem;
+        font-weight: 600;
+        color: #f0f6fc;
+        background: #1c2128;
+    }}
+    .citation-popup-text {{
+        padding: 1rem 1.25rem;
+        color: #c9d1d9;
+        font-size: 0.9rem;
+        line-height: 1.7;
+        max-height: 300px;
+        overflow-y: auto;
+        white-space: pre-wrap;
+    }}
+    .citation-popup-relevance {{
+        padding: 0.75rem 1.25rem;
+        background: #21262d;
+        border-top: 1px solid #30363d;
+        font-size: 0.85rem;
+    }}
+
     #answerContent h1, #answerContent h2, #answerContent h3 {{
         margin-top: 1rem;
         margin-bottom: 0.5rem;
@@ -423,6 +585,26 @@ async def ask_ai(q: str = Query(""), provider: str = Query("anthropic")):
         display: flex;
         align-items: center;
         gap: 0.5rem;
+    }}
+    .source-number-badge {{
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        background: rgba(88, 166, 255, 0.2);
+        color: #58a6ff;
+        font-weight: 700;
+        font-size: 0.85rem;
+        padding: 0.15rem 0.4rem;
+        border-radius: 4px;
+        border: 1px solid rgba(88, 166, 255, 0.4);
+        transition: all 0.2s;
+    }}
+    .source-number-badge span {{
+        text-decoration: underline;
+    }}
+    .source-card:hover .source-number-badge {{
+        background: rgba(88, 166, 255, 0.35);
+        color: #79c0ff;
     }}
     .source-link {{
         color: #58a6ff;

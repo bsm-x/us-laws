@@ -9,6 +9,7 @@ from fastapi.responses import HTMLResponse
 from app.templates import render_page
 from app.data_loaders import load_titles
 from app.config import get_settings
+from app.citations import get_related_sections
 from scripts.processing.parse_uscode import (
     parse_uscode_xml,
     get_title_structure,
@@ -172,6 +173,41 @@ async def view_title(title_num: int, search: str = Query("")):
     sections_html = ""
     for idx, sec in enumerate(all_sections[:50]):  # Show first 50
         formatted_text = format_section_text(sec.text)
+
+        # Extract section number from identifier (e.g., "17 USC 101" -> "101")
+        section_match = re.search(r"USC\s+(\d+[A-Za-z]*)", sec.identifier)
+        section_num = section_match.group(1) if section_match else ""
+
+        # Get related sections from citation graph
+        related_html = ""
+        if section_num:
+            # Build identifier in format: /us/usc/t{title}/s{section}
+            citation_identifier = f"/us/usc/t{title_num}/s{section_num}"
+            related = get_related_sections(citation_identifier)
+            if related:
+                cited_by = related.get("cited_by", [])[:5]  # Top 5
+                cites = related.get("cites", [])[:5]  # Top 5
+                total_cited_by = related.get("total_cited_by", 0)
+                total_cites = related.get("total_cites", 0)
+
+                if cited_by or cites:
+                    related_html = '<div class="related-sections" style="margin-top: 1rem; padding: 1rem; background: #21262d; border-radius: 8px; border-left: 3px solid #58a6ff;">'
+                    related_html += '<div style="font-weight: 600; color: #58a6ff; margin-bottom: 0.75rem; display: flex; align-items: center; gap: 0.5rem;"><span class="material-icons" style="font-size: 1rem;">hub</span>Related Sections</div>'
+
+                    if cited_by:
+                        related_html += f'<div style="margin-bottom: 0.75rem;"><span style="color: #8b949e; font-size: 0.85rem;">Referenced by ({total_cited_by}):</span><div style="margin-top: 0.25rem;">'
+                        for ref in cited_by:
+                            related_html += f'<a href="/code/{int(ref["title"])}" style="display: inline-block; margin: 0.25rem 0.5rem 0.25rem 0; padding: 0.25rem 0.5rem; background: #161b22; border-radius: 4px; font-size: 0.85rem; text-decoration: none;">{ref["title"]} U.S.C. § {ref["section"]}</a>'
+                        related_html += "</div></div>"
+
+                    if cites:
+                        related_html += f'<div><span style="color: #8b949e; font-size: 0.85rem;">References ({total_cites}):</span><div style="margin-top: 0.25rem;">'
+                        for ref in cites:
+                            related_html += f'<a href="/code/{int(ref["title"])}" style="display: inline-block; margin: 0.25rem 0.5rem 0.25rem 0; padding: 0.25rem 0.5rem; background: #161b22; border-radius: 4px; font-size: 0.85rem; text-decoration: none;">{ref["title"]} U.S.C. § {ref["section"]}</a>'
+                        related_html += "</div></div>"
+
+                    related_html += "</div>"
+
         sections_html += f"""
         <div class="section-item" style="border-bottom: 1px solid #30363d; padding: 1rem 0;">
             <div class="section-header" onclick="toggleSection({idx})" style="cursor: pointer; display: flex; align-items: center; gap: 0.5rem;">
@@ -183,6 +219,7 @@ async def view_title(title_num: int, search: str = Query("")):
             </div>
             <div class="section-content" id="content-{idx}" style="margin-top: 1rem; padding-left: 1.5rem; line-height: 1.8; color: #c9d1d9;">
                 {formatted_text}
+                {related_html}
             </div>
         </div>
         """

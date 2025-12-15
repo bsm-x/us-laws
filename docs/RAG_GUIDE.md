@@ -19,15 +19,32 @@ RAG combines:
 
 ### Web Interface
 
-Visit http://localhost:8000/ask
+Visit http://localhost:8000 (AI Search is the home page)
 
 **Features:**
 
 - Natural language questions
 - Choose between GPT-4 or Claude
-- See sources used for answer
-- Click to view full sections
+- Real-time streaming responses
+- **Inline citations** - AI answers include numbered markers like [1], [2]
+- **Citation popups** - Click any [1], [2] marker to see the source text
+- **Source cards** - Each source shows relevance score and links to official US Code
 - Example questions provided
+
+### Citation Popups
+
+When the AI generates an answer, it includes citation markers like [1], [2], etc. These are clickable:
+
+1. **Click a citation marker** in the answer text (e.g., "[1]")
+2. **Popup appears** showing:
+   - Source number and title (e.g., "[1] Title 29 Section 206")
+   - Clickable link to official US Code website
+   - Section heading
+   - First 800 characters of the source text
+   - Relevance score
+3. **Click outside** or the × button to close
+
+The source cards below the answer also show [1], [2] badges - click any card to see the same popup.
 
 ### Command Line
 
@@ -257,7 +274,7 @@ python scripts/processing/create_vector_db.py
 
 - [ ] Add chat history/conversation context
 - [ ] Support follow-up questions
-- [ ] Add citations in answer (inline links)
+- [x] ~~Add citations in answer (inline links)~~ ✅ **Done!** Click [1], [2] markers for popups
 - [ ] Export answers as PDF
 - [ ] Compare GPT-4 vs Claude side-by-side
 - [ ] Add confidence scores

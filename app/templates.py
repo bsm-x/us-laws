@@ -305,6 +305,10 @@ def render_page(title: str, content: str, nav_active: str = "") -> str:
                 <span class="material-icons">search</span>
                 AI Search
             </a>
+            <a href="/citations" class="{'active' if nav_active == 'citations' else ''}">
+                <span class="material-icons">hub</span>
+                Citation Graph
+            </a>
             <a href="/code" class="{'active' if nav_active == 'code' else ''}">
                 <span class="material-icons">menu_book</span>
                 US Code

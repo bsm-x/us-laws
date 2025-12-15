@@ -108,7 +108,7 @@ ANSWER (cite specific sections):"""
         messages=[
             {
                 "role": "system",
-                "content": "You are a helpful legal expert who answers questions based on US federal law. Always cite specific sections and be precise.",
+                "content": "You are a helpful legal expert who answers questions based on US federal law. Always include numbered citation markers [1], [2], etc. when stating facts from the provided sources. Be precise and thorough.",
             },
             {"role": "user", "content": prompt},
         ],
@@ -131,19 +131,22 @@ def answer_with_anthropic(
     # Use pooled client
     client = get_anthropic_client()
 
-    # Build context from sections
-    context = "\n\n".join(
-        [f"[{s.identifier}] {s.heading}\n{s.text[:2000]}" for s in sections]
-    )
+    # Build context from sections with numbered references
+    context_parts = []
+    for i, s in enumerate(sections, 1):
+        context_parts.append(f"[{i}] {s.identifier} - {s.heading}\n{s.text[:2000]}")
+    context = "\n\n".join(context_parts)
 
-    prompt = f"""You are a legal expert assistant helping users understand US federal law. Answer the question based ONLY on the provided US Code sections. Be precise and cite specific sections when relevant.
+    prompt = f"""You are a legal expert assistant helping users understand US federal law. Answer the question based ONLY on the provided US Code sections.
 
-US CODE SECTIONS:
+IMPORTANT: When stating facts from the sources, include citation markers like [1], [2], etc. that correspond to the source numbers below. Every factual claim should have at least one citation.
+
+SOURCES:
 {context}
 
 QUESTION: {question}
 
-ANSWER (cite specific sections):"""
+ANSWER (include [1], [2], etc. citations for facts):"""
 
     logger.debug(f"Calling Anthropic {model}")
 
@@ -151,7 +154,7 @@ ANSWER (cite specific sections):"""
         model=model,
         max_tokens=settings.rag_max_tokens,
         temperature=settings.rag_temperature,
-        system="You are a helpful legal expert who answers questions based on US federal law. Always cite specific sections and be precise.",
+        system="You are a helpful legal expert who answers questions based on US federal law. Always include numbered citation markers [1], [2], etc. when stating facts from the provided sources. Be precise and thorough.",
         messages=[{"role": "user", "content": prompt}],
     )
 
@@ -172,18 +175,22 @@ def stream_with_openai(
 
     client = get_openai_client()
 
-    context = "\n\n".join(
-        [f"[{s.identifier}] {s.heading}\n{s.text[:2000]}" for s in sections]
-    )
+    # Build context from sections with numbered references
+    context_parts = []
+    for i, s in enumerate(sections, 1):
+        context_parts.append(f"[{i}] {s.identifier} - {s.heading}\n{s.text[:2000]}")
+    context = "\n\n".join(context_parts)
 
-    prompt = f"""You are a legal expert assistant helping users understand US federal law. Answer the question based ONLY on the provided US Code sections. Be precise and cite specific sections when relevant.
+    prompt = f"""You are a legal expert assistant helping users understand US federal law. Answer the question based ONLY on the provided US Code sections.
 
-US CODE SECTIONS:
+IMPORTANT: When stating facts from the sources, include citation markers like [1], [2], etc. that correspond to the source numbers below. Every factual claim should have at least one citation.
+
+SOURCES:
 {context}
 
 QUESTION: {question}
 
-ANSWER (cite specific sections):"""
+ANSWER (include [1], [2], etc. citations for facts):"""
 
     logger.debug(f"Streaming OpenAI {model}")
 
@@ -192,7 +199,7 @@ ANSWER (cite specific sections):"""
         messages=[
             {
                 "role": "system",
-                "content": "You are a helpful legal expert who answers questions based on US federal law. Always cite specific sections and be precise.",
+                "content": "You are a helpful legal expert who answers questions based on US federal law. Always include numbered citation markers [1], [2], etc. when stating facts from the provided sources. Be precise and thorough.",
             },
             {"role": "user", "content": prompt},
         ],
@@ -217,18 +224,22 @@ def stream_with_anthropic(
 
     client = get_anthropic_client()
 
-    context = "\n\n".join(
-        [f"[{s.identifier}] {s.heading}\n{s.text[:2000]}" for s in sections]
-    )
+    # Build context from sections with numbered references
+    context_parts = []
+    for i, s in enumerate(sections, 1):
+        context_parts.append(f"[{i}] {s.identifier} - {s.heading}\n{s.text[:2000]}")
+    context = "\n\n".join(context_parts)
 
-    prompt = f"""You are a legal expert assistant helping users understand US federal law. Answer the question based ONLY on the provided US Code sections. Be precise and cite specific sections when relevant.
+    prompt = f"""You are a legal expert assistant helping users understand US federal law. Answer the question based ONLY on the provided US Code sections.
 
-US CODE SECTIONS:
+IMPORTANT: When stating facts from the sources, include citation markers like [1], [2], etc. that correspond to the source numbers below. Every factual claim should have at least one citation.
+
+SOURCES:
 {context}
 
 QUESTION: {question}
 
-ANSWER (cite specific sections):"""
+ANSWER (include [1], [2], etc. citations for facts):"""
 
     logger.debug(f"Streaming Anthropic {model}")
 
@@ -236,7 +247,7 @@ ANSWER (cite specific sections):"""
         model=model,
         max_tokens=settings.rag_max_tokens,
         temperature=settings.rag_temperature,
-        system="You are a helpful legal expert who answers questions based on US federal law. Always cite specific sections and be precise.",
+        system="You are a helpful legal expert who answers questions based on US federal law. Always include numbered citation markers [1], [2], etc. when stating facts from the provided sources. Be precise and thorough.",
         messages=[{"role": "user", "content": prompt}],
     ) as stream:
         for text in stream.text_stream:

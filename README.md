@@ -6,7 +6,9 @@ A comprehensive toolkit for accessing, searching, and analyzing United States fe
 
 - **📚 Complete US Code** - All 54 titles of the United States Code in XML format
 - **🔍 Semantic Search** - Natural language search across all federal law using OpenAI embeddings
-- **🤖 RAG Q&A** - Ask questions about US law and get AI-powered answers with citations
+- **🤖 RAG Q&A** - Ask questions about US law and get AI-powered answers with inline citations
+- **📎 Interactive Citations** - Click citation markers [1], [2] in AI answers to see source text in popups
+- **🔗 Citation Graph** - Explore how 187,000+ US Code sections reference each other
 - **🌐 Web Interface** - Browse and search laws through a FastAPI web application
 - **📜 Founding Documents** - Read the Declaration of Independence, Constitution, and Bill of Rights (including all Amendments)
 
@@ -126,7 +128,8 @@ python scripts/download/fetch_laws.py
 
 - [OpenAI Setup Guide](docs/OPENAI_SETUP.md) - Configure OpenAI API
 - [Vector Database Guide](docs/VECTOR_DB_README.md) - Understanding the vector DB
-- [RAG Guide](docs/RAG_GUIDE.md) - How the Q&A system works
+- [RAG Guide](docs/RAG_GUIDE.md) - How the Q&A system works (including citation popups)
+- [Citation Graph](docs/CITATION_GRAPH.md) - Explore how US Code sections reference each other
 - [File Formats](docs/FILE_FORMATS.md) - US Code XML format details
 
 ## License
