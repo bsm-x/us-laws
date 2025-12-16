@@ -25,6 +25,13 @@ class SearchResult(BaseModel):
     heading: str
     text: str
     relevance: float = Field(..., ge=0, le=1, description="Relevance score 0-1")
+    # Optional fields for SCOTUS opinions
+    source_type: str = Field(
+        default="uscode", description="Source type: 'uscode' or 'scotus'"
+    )
+    cluster_id: Optional[str] = Field(
+        default=None, description="CourtListener cluster ID for SCOTUS"
+    )
 
 
 class RAGResponse(BaseModel):

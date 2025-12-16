@@ -5,6 +5,7 @@ A comprehensive toolkit for accessing, searching, and analyzing United States fe
 ## Features
 
 - **📚 Complete US Code** - All 54 titles of the United States Code in XML format
+- **⚖️ Supreme Court Opinions** - Browse and search SCOTUS opinions from CourtListener
 - **🔍 Semantic Search** - Natural language search across all federal law using OpenAI embeddings
 - **🤖 RAG Q&A** - Ask questions about US law and get AI-powered answers with inline citations
 - **📎 Interactive Citations** - Click citation markers [1], [2] in AI answers to see source text in popups
@@ -45,7 +46,27 @@ python scripts/download/download_full_code.py
 python scripts/processing/create_vector_db.py
 ```
 
-### 5. Run the Web Application
+### 5. Download Supreme Court Opinions (Optional)
+
+First, get a free API token from [CourtListener](https://www.courtlistener.com/help/api/rest/#authentication) and add to `.env`:
+
+```bash
+COURTLISTENER_API_KEY=your_token_here
+```
+
+Then download opinions:
+
+```bash
+python scripts/download/download_scotus_opinions.py --limit 1000
+```
+
+Add them to the vector database:
+
+```bash
+python scripts/processing/add_scotus_to_vector_db.py
+```
+
+### 6. Run the Web Application
 
 ```bash
 python -m app.main
@@ -102,11 +123,12 @@ python scripts/download/fetch_laws.py
 
 ## Data Sources
 
-| Source            | Description               | URL                                           |
-| ----------------- | ------------------------- | --------------------------------------------- |
-| US Code           | Official US Code in XML   | [uscode.house.gov](https://uscode.house.gov/) |
-| Congress.gov      | Public laws and bill data | [api.congress.gov](https://api.congress.gov/) |
-| National Archives | Founding documents        | [archives.gov](https://www.archives.gov/)     |
+| Source            | Description               | URL                                                 |
+| ----------------- | ------------------------- | --------------------------------------------------- |
+| US Code           | Official US Code in XML   | [uscode.house.gov](https://uscode.house.gov/)       |
+| Congress.gov      | Public laws and bill data | [api.congress.gov](https://api.congress.gov/)       |
+| National Archives | Founding documents        | [archives.gov](https://www.archives.gov/)           |
+| CourtListener     | Supreme Court opinions    | [courtlistener.com](https://www.courtlistener.com/) |
 
 ## Tech Stack
 
@@ -118,11 +140,12 @@ python scripts/download/fetch_laws.py
 
 ## API Keys Required
 
-| Key                 | Purpose                      | Required For                             |
-| ------------------- | ---------------------------- | ---------------------------------------- |
-| `CONGRESS_API_KEY`  | Fetching public law metadata | `fetch_laws.py`, `fetch_policy_areas.py` |
-| `OPENAI_API_KEY`    | Embeddings and RAG           | Semantic search, Q&A features            |
-| `ANTHROPIC_API_KEY` | Claude LLM (optional)        | Alternative AI for Q&A                   |
+| Key                     | Purpose                      | Required For                             |
+| ----------------------- | ---------------------------- | ---------------------------------------- |
+| `CONGRESS_API_KEY`      | Fetching public law metadata | `fetch_laws.py`, `fetch_policy_areas.py` |
+| `OPENAI_API_KEY`        | Embeddings and RAG           | Semantic search, Q&A features            |
+| `ANTHROPIC_API_KEY`     | Claude LLM (optional)        | Alternative AI for Q&A                   |
+| `COURTLISTENER_API_KEY` | Supreme Court opinions       | `download_scotus_opinions.py`            |
 
 ## Documentation
 
@@ -130,6 +153,7 @@ python scripts/download/fetch_laws.py
 - [Vector Database Guide](docs/VECTOR_DB_README.md) - Understanding the vector DB
 - [RAG Guide](docs/RAG_GUIDE.md) - How the Q&A system works (including citation popups)
 - [Citation Graph](docs/CITATION_GRAPH.md) - Explore how US Code sections reference each other
+- [Supreme Court Guide](docs/SCOTUS_GUIDE.md) - Download and search SCOTUS opinions
 - [File Formats](docs/FILE_FORMATS.md) - US Code XML format details
 
 ## License

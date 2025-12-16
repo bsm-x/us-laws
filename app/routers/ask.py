@@ -49,6 +49,8 @@ async def stream_answer(q: str = Query(...), provider: str = Query("openai")):
                     "heading": s.heading,
                     "relevance": s.relevance,
                     "text": s.text[:1500],  # Include text for citation popups
+                    "source_type": s.source_type,
+                    "cluster_id": s.cluster_id,  # For SCOTUS CourtListener links
                 }
                 for s in uscode_sections
             ]
@@ -246,36 +248,64 @@ async def ask_ai(q: str = Query(""), provider: str = Query("anthropic")):
                                 const sourcesTitle = document.getElementById('sourcesTitle');
 
                                 sourcesGrid.style.display = 'block';
-                                sourcesTitle.textContent = `US Code Sources (${{data.content.length}} sections)`;
+                                // Count source types for display
+                                const uscCount = data.content.filter(s => s.source_type !== 'scotus').length;
+                                const scotusCount = data.content.filter(s => s.source_type === 'scotus').length;
+                                let sourcesLabel = '';
+                                if (uscCount > 0 && scotusCount > 0) {{
+                                    sourcesLabel = `Sources (${{uscCount}} US Code, ${{scotusCount}} SCOTUS)`;
+                                }} else if (scotusCount > 0) {{
+                                    sourcesLabel = `Supreme Court Sources (${{scotusCount}} opinions)`;
+                                }} else {{
+                                    sourcesLabel = `US Code Sources (${{uscCount}} sections)`;
+                                }}
+                                sourcesTitle.textContent = sourcesLabel;
 
                                 sourcesList.innerHTML = data.content.map((s, index) => {{
                                     const sourceNum = index + 1;  // For citation markers [1], [2], etc.
-                                    // Parse identifier like "/us/usc/t29/s206" to get title and section
-                                    const identMatch = s.identifier.match(/\\/us\\/usc\\/t(\\d+)\\/s(.+)$/);
-                                    // Also match "Title 42 “SEC. 221." -> Title 42, Section 221
-                                    const titleMatch = s.identifier.match(/Title\\s+(\\d+).*SEC\\.\\s*(\\d+)/i);
 
-                                    let uscLink = '';
+                                    let sourceLink = '';
                                     let displayName = s.identifier;
+                                    let sourceIcon = 'menu_book';  // Default US Code icon
 
-                                    if (identMatch) {{
-                                        const titleNum = identMatch[1];
-                                        const sectionNum = identMatch[2];
-                                        uscLink = `https://uscode.house.gov/view.xhtml?req=granuleid:USC-prelim-title${{titleNum}}-section${{sectionNum}}&edition=prelim`;
-                                        displayName = `USC Title ${{titleNum}} Section ${{sectionNum}}`;
-                                    }} else if (titleMatch) {{
-                                        const titleNum = titleMatch[1];
-                                        const sectionNum = titleMatch[2];
-                                        uscLink = `https://uscode.house.gov/view.xhtml?req=granuleid:USC-prelim-title${{titleNum}}-section${{sectionNum}}&edition=prelim`;
-                                        displayName = `USC Title ${{titleNum}} Section ${{sectionNum}}`;
+                                    // Check if it's a SCOTUS opinion
+                                    if (s.source_type === 'scotus') {{
+                                        displayName = s.identifier.replace('SCOTUS: ', '');
+                                        sourceIcon = 'gavel';
+                                        if (s.cluster_id) {{
+                                            sourceLink = `https://www.courtlistener.com/opinion/${{s.cluster_id}}/`;
+                                        }}
+                                    }} else if (s.identifier.startsWith('SCOTUS:')) {{
+                                        // Legacy format support
+                                        displayName = s.identifier.replace('SCOTUS: ', '');
+                                        sourceIcon = 'gavel';
+                                        if (s.cluster_id) {{
+                                            sourceLink = `https://www.courtlistener.com/opinion/${{s.cluster_id}}/`;
+                                        }}
                                     }} else {{
-                                        // Check if it's a founding document
-                                        // Simple heuristic: if it's not a path-like string, assume it's a doc title
-                                        if (!s.identifier.includes('/')) {{
-                                            // Convert "Northwest Ordinance - Article 6" to "northwest_ordinance"
-                                            const docName = s.identifier.split(' - ')[0].toLowerCase().replace(/ /g, '_');
-                                            uscLink = `/founding-docs/${{docName}}`;
-                                            displayName = s.identifier;
+                                        // Parse identifier like "/us/usc/t29/s206" to get title and section
+                                        const identMatch = s.identifier.match(/\\/us\\/usc\\/t(\\d+)\\/s(.+)$/);
+                                        // Also match "Title 42 "SEC. 221." -> Title 42, Section 221
+                                        const titleMatch = s.identifier.match(/Title\\s+(\\d+).*SEC\\.\\s*(\\d+)/i);
+
+                                        if (identMatch) {{
+                                            const titleNum = identMatch[1];
+                                            const sectionNum = identMatch[2];
+                                            sourceLink = `https://uscode.house.gov/view.xhtml?req=granuleid:USC-prelim-title${{titleNum}}-section${{sectionNum}}&edition=prelim`;
+                                            displayName = `USC Title ${{titleNum}} Section ${{sectionNum}}`;
+                                        }} else if (titleMatch) {{
+                                            const titleNum = titleMatch[1];
+                                            const sectionNum = titleMatch[2];
+                                            sourceLink = `https://uscode.house.gov/view.xhtml?req=granuleid:USC-prelim-title${{titleNum}}-section${{sectionNum}}&edition=prelim`;
+                                            displayName = `USC Title ${{titleNum}} Section ${{sectionNum}}`;
+                                        }} else {{
+                                            // Check if it's a founding document
+                                            if (!s.identifier.includes('/')) {{
+                                                const docName = s.identifier.split(' - ')[0].toLowerCase().replace(/ /g, '_');
+                                                sourceLink = `/founding-docs/${{docName}}`;
+                                                displayName = s.identifier;
+                                                sourceIcon = 'history_edu';
+                                            }}
                                         }}
                                     }}
 
@@ -288,8 +318,9 @@ async def ask_ai(q: str = Query(""), provider: str = Query("anthropic")):
                                             <div class="source-header">
                                                 <div class="source-title-section">
                                                     <span class="source-number-badge" title="Click to view source text">[<span>${{sourceNum}}</span>]</span>
-                                                    ${{uscLink
-                                                        ? `<a href="${{uscLink}}" target="_blank" rel="noopener noreferrer" class="source-link" onclick="event.stopPropagation();">
+                                                    <span class="material-icons source-type-icon" style="font-size: 1rem; color: #8b949e; vertical-align: middle; margin-right: 0.25rem;">${{sourceIcon}}</span>
+                                                    ${{sourceLink
+                                                        ? `<a href="${{sourceLink}}" target="_blank" rel="noopener noreferrer" class="source-link" onclick="event.stopPropagation();">
                                                                <span class="material-icons" style="font-size: 1rem; vertical-align: middle;">open_in_new</span>
                                                                ${{displayName}}
                                                            </a>`
@@ -391,21 +422,41 @@ async def ask_ai(q: str = Query(""), provider: str = Query("anthropic")):
 
         // Parse identifier to get title and section for display and link
         let displayTitle = source.identifier;
-        let uscLink = '';
-        const identMatch = source.identifier.match(/\\/us\\/usc\\/t(\\d+)\\/s(.+)$/);
-        if (identMatch) {{
-            const titleNum = identMatch[1];
-            const sectionNum = identMatch[2];
+        let sourceLink = '';
+        let sourceIcon = '';
+
+        // Check if it's a US Code citation
+        const uscMatch = source.identifier.match(/\\/us\\/usc\\/t(\\d+)\\/s(.+)$/);
+        if (uscMatch) {{
+            const titleNum = uscMatch[1];
+            const sectionNum = uscMatch[2];
             displayTitle = 'Title ' + titleNum + ' Section ' + sectionNum;
-            uscLink = 'https://uscode.house.gov/view.xhtml?req=granuleid:USC-prelim-title' + titleNum + '-section' + sectionNum + '&edition=prelim';
+            sourceLink = 'https://uscode.house.gov/view.xhtml?req=granuleid:USC-prelim-title' + titleNum + '-section' + sectionNum + '&edition=prelim';
+            sourceIcon = 'menu_book';
+        }}
+        // Check if it's a SCOTUS citation
+        else if (source.identifier.startsWith('SCOTUS:')) {{
+            displayTitle = source.identifier.replace('SCOTUS: ', '');
+            // CourtListener link if we have cluster_id
+            if (source.cluster_id) {{
+                sourceLink = 'https://www.courtlistener.com/opinion/' + source.cluster_id + '/';
+            }}
+            sourceIcon = 'gavel';
         }}
 
         // Create popup
         const popup = document.createElement('div');
         popup.className = 'citation-popup';
-        const headerContent = uscLink
-            ? '<a href="' + uscLink + '" target="_blank" rel="noopener noreferrer" style="color: #58a6ff; text-decoration: none;">[' + num + '] ' + escapeHtml(displayTitle) + ' <span class="material-icons" style="font-size: 0.9rem; vertical-align: middle;">open_in_new</span></a>'
-            : '<span>[' + num + '] ' + escapeHtml(displayTitle) + '</span>';
+        let headerContent;
+        if (sourceLink) {{
+            headerContent = '<a href="' + sourceLink + '" target="_blank" rel="noopener noreferrer" style="color: #58a6ff; text-decoration: none;">';
+            if (sourceIcon) {{
+                headerContent += '<span class="material-icons" style="font-size: 1rem; vertical-align: middle; margin-right: 0.25rem;">' + sourceIcon + '</span>';
+            }}
+            headerContent += '[' + num + '] ' + escapeHtml(displayTitle) + ' <span class="material-icons" style="font-size: 0.9rem; vertical-align: middle;">open_in_new</span></a>';
+        }} else {{
+            headerContent = '<span>[' + num + '] ' + escapeHtml(displayTitle) + '</span>';
+        }}
         popup.innerHTML = `
             <div class=\"citation-popup-header\">
                 <strong>${{headerContent}}</strong>

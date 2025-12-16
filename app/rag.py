@@ -20,10 +20,17 @@ from app.models import SearchResult, RAGResponse
 logger = logging.getLogger(__name__)
 
 
-def get_relevant_sections(query: str, n_results: int = 5) -> List[SearchResult]:
+def get_relevant_sections(
+    query: str, n_results: int = 5, include_scotus: bool = True
+) -> List[SearchResult]:
     """
     Retrieve relevant sections from vector database
     Uses singleton client for performance
+
+    Args:
+        query: The search query
+        n_results: Number of results to retrieve
+        include_scotus: Whether to include Supreme Court opinions in search
     """
     settings = get_settings()
 
@@ -39,9 +46,10 @@ def get_relevant_sections(query: str, n_results: int = 5) -> List[SearchResult]:
     # Use singleton client (no reconnection overhead)
     db = get_vector_db()
 
-    # Fetch a larger pool, then filter out non-USC docs (e.g., Founding Documents)
-    # so the answer context remains strictly US Code.
-    raw_results = db.search(query, n_results=n_results)
+    # Search both US Code and SCOTUS opinions
+    raw_results = db.search_all(
+        query, n_results=n_results, include_scotus=include_scotus
+    )
 
     if not raw_results["documents"][0]:
         return []
@@ -62,12 +70,19 @@ def get_relevant_sections(query: str, n_results: int = 5) -> List[SearchResult]:
         # We use a quadratic scaling that maps the typical range of 0-2 to 0-1
         # This provides more intuitive scores (e.g. 0.8 distance -> ~83% match)
         relevance = max(0.0, min(1.0, 1.0 - (distance * distance) / 4.0))
+
+        # Determine source type and get SCOTUS-specific fields
+        source_type = meta.get("source_type", "uscode")
+        cluster_id = str(meta.get("cluster_id", "")) if meta.get("cluster_id") else None
+
         sections.append(
             SearchResult(
                 identifier=meta["identifier"],
                 heading=meta["heading"],
                 text=doc,
                 relevance=relevance,
+                source_type=source_type,
+                cluster_id=cluster_id,
             )
         )
 
@@ -92,9 +107,9 @@ def answer_with_openai(
         [f"[{s.identifier}] {s.heading}\n{s.text[:2000]}" for s in sections]
     )
 
-    prompt = f"""You are a legal expert assistant helping users understand US federal law. Answer the question based ONLY on the provided US Code sections. Be precise and cite specific sections when relevant.
+    prompt = f"""You are a legal expert assistant helping users understand US federal law. Answer the question based ONLY on the provided sources (US Code sections and Supreme Court opinions). Be precise and cite specific sections when relevant.
 
-US CODE SECTIONS:
+SOURCES (US Code sections and Supreme Court opinions):
 {context}
 
 QUESTION: {question}
@@ -108,7 +123,7 @@ ANSWER (cite specific sections):"""
         messages=[
             {
                 "role": "system",
-                "content": "You are a helpful legal expert who answers questions based on US federal law. Always include numbered citation markers [1], [2], etc. when stating facts from the provided sources. Be precise and thorough.",
+                "content": "You are a helpful legal expert who answers questions based on US federal law and Supreme Court opinions. Always include numbered citation markers [1], [2], etc. when stating facts from the provided sources. Be precise and thorough.",
             },
             {"role": "user", "content": prompt},
         ],
@@ -137,11 +152,11 @@ def answer_with_anthropic(
         context_parts.append(f"[{i}] {s.identifier} - {s.heading}\n{s.text[:2000]}")
     context = "\n\n".join(context_parts)
 
-    prompt = f"""You are a legal expert assistant helping users understand US federal law. Answer the question based ONLY on the provided US Code sections.
+    prompt = f"""You are a legal expert assistant helping users understand US federal law. Answer the question based ONLY on the provided sources (US Code sections and Supreme Court opinions).
 
 IMPORTANT: When stating facts from the sources, include citation markers like [1], [2], etc. that correspond to the source numbers below. Every factual claim should have at least one citation.
 
-SOURCES:
+SOURCES (US Code sections and Supreme Court opinions):
 {context}
 
 QUESTION: {question}
@@ -154,7 +169,7 @@ ANSWER (include [1], [2], etc. citations for facts):"""
         model=model,
         max_tokens=settings.rag_max_tokens,
         temperature=settings.rag_temperature,
-        system="You are a helpful legal expert who answers questions based on US federal law. Always include numbered citation markers [1], [2], etc. when stating facts from the provided sources. Be precise and thorough.",
+        system="You are a helpful legal expert who answers questions based on US federal law and Supreme Court opinions. Always include numbered citation markers [1], [2], etc. when stating facts from the provided sources. Be precise and thorough.",
         messages=[{"role": "user", "content": prompt}],
     )
 
@@ -181,11 +196,11 @@ def stream_with_openai(
         context_parts.append(f"[{i}] {s.identifier} - {s.heading}\n{s.text[:2000]}")
     context = "\n\n".join(context_parts)
 
-    prompt = f"""You are a legal expert assistant helping users understand US federal law. Answer the question based ONLY on the provided US Code sections.
+    prompt = f"""You are a legal expert assistant helping users understand US federal law. Answer the question based ONLY on the provided sources (US Code sections and Supreme Court opinions).
 
 IMPORTANT: When stating facts from the sources, include citation markers like [1], [2], etc. that correspond to the source numbers below. Every factual claim should have at least one citation.
 
-SOURCES:
+SOURCES (US Code sections and Supreme Court opinions):
 {context}
 
 QUESTION: {question}
@@ -199,7 +214,7 @@ ANSWER (include [1], [2], etc. citations for facts):"""
         messages=[
             {
                 "role": "system",
-                "content": "You are a helpful legal expert who answers questions based on US federal law. Always include numbered citation markers [1], [2], etc. when stating facts from the provided sources. Be precise and thorough.",
+                "content": "You are a helpful legal expert who answers questions based on US federal law and Supreme Court opinions. Always include numbered citation markers [1], [2], etc. when stating facts from the provided sources. Be precise and thorough.",
             },
             {"role": "user", "content": prompt},
         ],
@@ -230,11 +245,11 @@ def stream_with_anthropic(
         context_parts.append(f"[{i}] {s.identifier} - {s.heading}\n{s.text[:2000]}")
     context = "\n\n".join(context_parts)
 
-    prompt = f"""You are a legal expert assistant helping users understand US federal law. Answer the question based ONLY on the provided US Code sections.
+    prompt = f"""You are a legal expert assistant helping users understand US federal law. Answer the question based ONLY on the provided sources (US Code sections and Supreme Court opinions).
 
 IMPORTANT: When stating facts from the sources, include citation markers like [1], [2], etc. that correspond to the source numbers below. Every factual claim should have at least one citation.
 
-SOURCES:
+SOURCES (US Code sections and Supreme Court opinions):
 {context}
 
 QUESTION: {question}
@@ -247,7 +262,7 @@ ANSWER (include [1], [2], etc. citations for facts):"""
         model=model,
         max_tokens=settings.rag_max_tokens,
         temperature=settings.rag_temperature,
-        system="You are a helpful legal expert who answers questions based on US federal law. Always include numbered citation markers [1], [2], etc. when stating facts from the provided sources. Be precise and thorough.",
+        system="You are a helpful legal expert who answers questions based on US federal law and Supreme Court opinions. Always include numbered citation markers [1], [2], etc. when stating facts from the provided sources. Be precise and thorough.",
         messages=[{"role": "user", "content": prompt}],
     ) as stream:
         for text in stream.text_stream:

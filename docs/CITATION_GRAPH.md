@@ -3,6 +3,7 @@
 ## Overview
 
 The Citation Graph feature maps how US Code sections reference each other. This creates a network showing:
+
 - Which sections are most frequently cited (authoritative)
 - Which sections cite the most others (comprehensive)
 - How different parts of federal law interconnect
@@ -20,6 +21,7 @@ python scripts/processing/build_citation_graph.py
 ```
 
 This script:
+
 1. Parses all US Code XML files
 2. Extracts cross-references using regex patterns
 3. Builds a SQLite database at `data/citations.db`
@@ -30,18 +32,20 @@ This script:
 The citation graph uses SQLite with two tables:
 
 ### `citations` Table
-| Column | Type | Description |
-|--------|------|-------------|
-| id | INTEGER | Primary key |
-| source_section | TEXT | Section making the citation (e.g., "17 USC 101") |
-| target_section | TEXT | Section being cited (e.g., "17 USC 102") |
+
+| Column         | Type    | Description                                      |
+| -------------- | ------- | ------------------------------------------------ |
+| id             | INTEGER | Primary key                                      |
+| source_section | TEXT    | Section making the citation (e.g., "17 USC 101") |
+| target_section | TEXT    | Section being cited (e.g., "17 USC 102")         |
 
 ### `sections` Table
-| Column | Type | Description |
-|--------|------|-------------|
-| identifier | TEXT | Section identifier (primary key) |
+
+| Column         | Type    | Description                          |
+| -------------- | ------- | ------------------------------------ |
+| identifier     | TEXT    | Section identifier (primary key)     |
 | cited_by_count | INTEGER | How many times this section is cited |
-| cites_count | INTEGER | How many sections this cites |
+| cites_count    | INTEGER | How many sections this cites         |
 
 ## Web Interface
 
@@ -50,15 +54,18 @@ Visit http://localhost:8000/citations
 ### Features
 
 1. **Statistics Dashboard**
+
    - Total citations count
    - Total sections indexed
 
 2. **Section Lookup**
+
    - Enter a section identifier (e.g., "17 USC 101")
    - See all sections that cite it
    - See all sections it cites
 
 3. **Most Cited Sections**
+
    - Top 10 most-referenced sections
    - Shows citation count for each
    - Click to view the section
@@ -70,32 +77,41 @@ Visit http://localhost:8000/citations
 ## API Endpoints
 
 ### Get Citation Graph Status
+
 ```bash
 GET /citations/status
 ```
+
 Returns total citations and sections count.
 
 ### Lookup Citations for a Section
+
 ```bash
 GET /citations/lookup?section=17+USC+101
 ```
+
 Returns sections that cite the given section and sections it cites.
 
 ### Get Most Cited Sections
+
 ```bash
 GET /citations/most-cited?limit=10
 ```
+
 Returns the most frequently cited sections.
 
 ### Get Most Citing Sections
+
 ```bash
 GET /citations/most-citing?limit=10
 ```
+
 Returns sections that cite the most other sections.
 
 ## Integration with AI Search
 
 When viewing a US Code section page, the sidebar shows:
+
 - **Cited By**: Sections that reference this one
 - **Cites**: Sections this one references
 
@@ -104,6 +120,7 @@ This helps understand the legal context and related provisions.
 ## Citation Patterns Detected
 
 The parser recognizes these reference formats:
+
 - `section 101 of title 17`
 - `17 U.S.C. 101`
 - `title 17, United States Code`

@@ -32,6 +32,7 @@ from app.routers import (
     ask_router,
     founding_docs_router,
     citations_router,
+    scotus_router,
 )
 
 # Setup logging
@@ -98,6 +99,7 @@ app.include_router(ask_router)  # Home page (AI Search at /)
 app.include_router(code_router)
 app.include_router(founding_docs_router)
 app.include_router(citations_router)
+app.include_router(scotus_router)
 
 
 @app.get("/api/health", response_model=HealthResponse)

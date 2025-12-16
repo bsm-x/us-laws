@@ -313,6 +313,10 @@ def render_page(title: str, content: str, nav_active: str = "") -> str:
                 <span class="material-icons">menu_book</span>
                 US Code
             </a>
+            <a href="/scotus" class="{'active' if nav_active == 'scotus' else ''}">
+                <span class="material-icons">account_balance</span>
+                Supreme Court
+            </a>
             <a href="/founding-docs" class="{'active' if nav_active == 'founding_docs' else ''}">
                 <span class="material-icons">history_edu</span>
                 Founding Docs
